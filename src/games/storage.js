@@ -4,8 +4,8 @@ import { supabase, supabaseReady } from "../lib/supabase.js";
 /* ============================================================
    BEAU · Salle de jeux : stockage
    Le localStorage reste la source immédiate (préfixe beau_).
-   Quand un compte BEAU est connecté (Supabase, projet BEAU
-   Treasury), les mêmes données sont synchronisées en arrière-plan.
+   Quand un compte est connecté (Supabase, projet LudoBeau), les
+   mêmes données sont synchronisées en arrière-plan.
    Sans compte ni configuration, tout reste sur l'appareil.
    ============================================================ */
 
@@ -40,8 +40,8 @@ export async function signInWithPassword(email, password) {
 }
 export async function sendMagicLink(email) {
   if (!supabase) return { error: new Error("offline") };
-  /* compte BEAU existant uniquement : on ne crée pas de compte depuis la salle de jeux */
-  return supabase.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: false, emailRedirectTo: window.location.href } });
+  /* le lien crée le compte au premier passage */
+  return supabase.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: true, emailRedirectTo: window.location.origin + window.location.pathname } });
 }
 export async function signOut() { if (supabase) await supabase.auth.signOut(); }
 
@@ -68,7 +68,7 @@ export function saveLang(lang) {
 }
 
 /* Nom affiché du compte : profil de jeu s'il existe, sinon une proposition
-   tirée des métadonnées du compte BEAU (ou du début de l'e-mail). */
+   tirée des métadonnées du compte (ou du début de l'e-mail). */
 export async function fetchAccountName(user) {
   if (!supabase || !user) return { profile: "", suggested: "" };
   const { data, error } = await supabase.from("player_profiles").select("display_name").eq("user_id", user.id).maybeSingle();

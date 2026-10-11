@@ -32,7 +32,7 @@ const UI = {
     room: (p) => `${p} % de la salle`, roomTotal: (n) => `${n} réponse${n > 1 ? "s" : ""} cette semaine`,
     board: "Classement", boardTitle: "Les plus assidus", boardEmpty: "Personne encore. Soyez le premier.",
     boardStreak: (n) => `${n} sem. d'affilée`, boardAnswered: (n) => `${n} médité${n > 1 ? "s" : ""}`, close: "Fermer",
-    syncHint: "Connectez votre compte BEAU depuis la salle pour garder votre historique sur tous vos appareils.",
+    syncHint: "Connectez-vous depuis l'entrée de la salle pour garder votre historique sur tous vos appareils.",
   },
   en: {
     title: "The Prompter's quiz", weeklyEyebrow: (w) => `DILEMMA OF THE WEEK · ${w}`, randomEyebrow: "DILEMMAS AT RANDOM",
@@ -47,7 +47,7 @@ const UI = {
     room: (p) => `${p}% of the room`, roomTotal: (n) => `${n} answer${n > 1 ? "s" : ""} this week`,
     board: "Leaderboard", boardTitle: "The most assiduous", boardEmpty: "No one yet. Be the first.",
     boardStreak: (n) => `${n} wk${n > 1 ? "s" : ""} in a row`, boardAnswered: (n) => `${n} pondered`, close: "Close",
-    syncHint: "Connect your BEAU account from the games room to keep your history across devices.",
+    syncHint: "Sign in from the games room entrance to keep your history across devices.",
   },
 };
 
@@ -165,7 +165,7 @@ export default function BeauQuizSouffleur({ lang = "fr" }) {
   const [roomTick, setRoomTick] = useState(0);
 
   useEffect(() => { saveQuizHist(hist); }, [hist]);
-  /* compte BEAU connecté : fusion de l'historique de l'appareil et du compte */
+  /* compte connecté : fusion de l'historique de l'appareil et du compte */
   useEffect(() => {
     if (!user) return;
     let live = true;

@@ -4,7 +4,7 @@ import { loadBets, saveBets, syncBets, pushBetSeal, pushBetReveal, pushBetOutcom
 /* ============================================================
    BEAU · Le pari scellé / The sealed wager
    Bilingue (FR/EN) via la prop `lang`. Commit-reveal : fonctionne
-   sans serveur ; avec un compte BEAU, le sceau est publié et la
+   sans serveur ; avec un compte, le sceau est publié et la
    révélation vérifiée par la base (voir storage.js).
    ============================================================ */
 
@@ -45,9 +45,9 @@ const STR = {
     fineVerify: "Le pari et son sel vous parviennent dans la preuve. BEAU recalcule le sceau et confirme qu'il correspond mot pour mot.",
     copiedSeal: "Sceau copié. Partagez-le.", copiedProof: "Preuve copiée. Votre ami peut la vérifier dans l'onglet Vérifier.",
     shareSealMsg: (h, d, s) => `Pari scellé · BEAU\nSceau : ${h}\nÉchéance : ${d}${s ? `\nMise : ${s}` : ""}\nLe contenu sera révélé le moment venu, et vérifiable.`,
-    fineCloud: "Mises symboliques : l'honneur, un café. BEAU n'est pas une salle de paris. Seul le sceau rejoint votre compte BEAU ; la prédiction reste sur cet appareil jusqu'à ce que vous la révéliez.",
+    fineCloud: "Mises symboliques : l'honneur, un café. BEAU n'est pas une salle de paris. Seul le sceau rejoint votre compte ; la prédiction reste sur cet appareil jusqu'à ce que vous la révéliez.",
     tabWall: "Le mur", wallLine: "Les paris révélés de la salle. Chacun a été vérifié contre son sceau.",
-    wallEmpty: "Aucun pari révélé pour l'instant.", wallBy: (n) => `par ${n}`, wallOffline: "Le mur s'affiche quand la salle est reliée à BEAU.",
+    wallEmpty: "Aucun pari révélé pour l'instant.", wallBy: (n) => `par ${n}`, wallOffline: "Le mur s'affiche quand la salle est reliée à sa base.",
     elsewhere: "Scellé sur un autre appareil : la prédiction s'y trouve, révélez-la depuis là-bas.",
     locale: "fr-FR", dash: "—",
   },
@@ -76,9 +76,9 @@ const STR = {
     fineVerify: "The wager and its salt reach you inside the proof. BEAU recomputes the seal and confirms it matches word for word.",
     copiedSeal: "Seal copied. Share it.", copiedProof: "Proof copied. Your friend can verify it in the Verify tab.",
     shareSealMsg: (h, d, s) => `Sealed wager · BEAU\nSeal: ${h}\nDeadline: ${d}${s ? `\nStake: ${s}` : ""}\nThe content will be revealed in time, and verifiable.`,
-    fineCloud: "Symbolic stakes: your honour, a coffee. BEAU is not a betting house. Only the seal reaches your BEAU account; the prediction stays on this device until you reveal it.",
+    fineCloud: "Symbolic stakes: your honour, a coffee. BEAU is not a betting house. Only the seal reaches your account; the prediction stays on this device until you reveal it.",
     tabWall: "The wall", wallLine: "The room's revealed wagers. Each one was checked against its seal.",
-    wallEmpty: "No revealed wagers yet.", wallBy: (n) => `by ${n}`, wallOffline: "The wall appears once the room is linked to BEAU.",
+    wallEmpty: "No revealed wagers yet.", wallBy: (n) => `by ${n}`, wallOffline: "The wall appears once the room is linked to its database.",
     elsewhere: "Sealed on another device: the prediction lives there, reveal it from there.",
     locale: "en-GB", dash: "—",
   },
@@ -118,7 +118,7 @@ export default function BeauPariScelle({ lang = "fr" }) {
   const user = useAccount();
 
   useEffect(() => { saveBets(bets); }, [bets]);
-  /* compte BEAU connecté : réconciliation des sceaux et révélations */
+  /* compte connecté : réconciliation des sceaux et révélations */
   useEffect(() => {
     if (!user) return;
     let live = true;

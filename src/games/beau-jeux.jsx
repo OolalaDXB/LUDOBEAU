@@ -5,7 +5,7 @@ import React, { useState, useEffect } from "react";
    Hall bilingue (FR/EN) : entrée par le nom, bouton FR/EN,
    grille des sept tables, rendu d'un jeu avec bouton retour.
    Persistance : beau_name, beau_lang (voir storage.js).
-   Compte BEAU optionnel : relie le nom et synchronise quiz et paris.
+   Compte optionnel : relie le nom et synchronise quiz et paris.
    ============================================================ */
 
 import Echecs from "./beau-echiquier-plateau.jsx";
@@ -99,22 +99,22 @@ const PSTR = {
     namePh: "Votre nom", enterBtn: "Entrer",
     hello: (n) => `Bonjour ${n}`, hubEyebrow: "LA SALLE DE JEUX DU SOUFFLEUR", choose: (n) => `Choisissez votre table, ${n}.`,
     footer: "BEAU · une table de jeux, pas une salle d'arcade.", logout: "Changer de nom", back: "‹ Jeux", defaultName: "Armateur",
-    accountOpen: "J'ai un compte BEAU", accountClose: "Rester sans compte",
+    accountOpen: "Garder mes parties sur tous mes appareils", accountClose: "Rester sans compte",
     email: "E-mail", password: "Mot de passe", signIn: "Se connecter", magic: "Recevoir un lien de connexion",
     linkSent: "Lien envoyé. Ouvrez-le depuis cet appareil.", signInError: "Connexion impossible. Vérifiez vos identifiants.",
-    needEmail: "Indiquez l'e-mail de votre compte BEAU.", connectedAs: (e) => `Compte BEAU · ${e}`, signOut: "Se déconnecter",
-    accountFine: "Facultatif. Avec votre compte BEAU, votre nom, vos dilemmes et vos sceaux vous suivent d'un appareil à l'autre.",
+    needEmail: "Indiquez votre e-mail.", connectedAs: (e) => `Compte · ${e}`, signOut: "Se déconnecter",
+    accountFine: "Facultatif. Un lien par e-mail suffit : votre nom, vos dilemmes et vos sceaux vous suivent d'un appareil à l'autre.",
   },
   en: {
     roomTitle: "The games room", roomEyebrow: "THE PROMPTER", enterLine: "Enter your name, and take your seat at the table.",
     namePh: "Your name", enterBtn: "Enter",
     hello: (n) => `Hello ${n}`, hubEyebrow: "THE PROMPTER'S GAMES ROOM", choose: (n) => `Choose your table, ${n}.`,
     footer: "BEAU · a games table, not an arcade.", logout: "Change name", back: "‹ Games", defaultName: "Skipper",
-    accountOpen: "I have a BEAU account", accountClose: "Stay without an account",
+    accountOpen: "Keep my games on all my devices", accountClose: "Stay without an account",
     email: "Email", password: "Password", signIn: "Sign in", magic: "Email me a sign-in link",
     linkSent: "Link sent. Open it on this device.", signInError: "Could not sign in. Check your details.",
-    needEmail: "Enter your BEAU account email.", connectedAs: (e) => `BEAU account · ${e}`, signOut: "Sign out",
-    accountFine: "Optional. With your BEAU account, your name, dilemmas and seals follow you from one device to another.",
+    needEmail: "Enter your email.", connectedAs: (e) => `Account · ${e}`, signOut: "Sign out",
+    accountFine: "Optional. An email link is enough: your name, dilemmas and seals follow you from one device to another.",
   },
 };
 
@@ -137,7 +137,7 @@ function LangToggle({ lang, onChange }) {
   );
 }
 
-/* Connexion au compte BEAU existant (Supabase Auth du projet BEAU Treasury). */
+/* Connexion facultative (Supabase Auth du projet LudoBeau) : mot de passe ou lien e-mail. */
 function AccountForm({ P }) {
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
@@ -182,7 +182,7 @@ export default function BeauJeux() {
   const user = useAccount();
   const P = PSTR[lang] || PSTR.fr;
 
-  /* compte BEAU : le nom du profil fait foi ; à défaut, on y rattache le nom local */
+  /* compte connecté : le nom du profil fait foi ; à défaut, on y rattache le nom local */
   useEffect(() => {
     if (!user) return;
     let live = true;

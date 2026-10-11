@@ -1,7 +1,7 @@
 -- ============================================================
 -- BEAU · Salle de jeux du Souffleur
--- Target: BEAU Treasury Supabase project (lxlpunmdywbhlwifgcpx).
--- Shares auth.users with BEAU: a player is a BEAU account.
+-- Target: LudoBeau Supabase project (fhqismpcrrvptsbqtrcu).
+-- A player is a Supabase Auth user of this project.
 -- Additive only: creates new tables and functions, touches nothing else.
 -- ============================================================
 
@@ -205,15 +205,12 @@ begin
 end;
 $$;
 
-drop trigger if exists wagers_freeze_seal on public.wagers;
 create trigger wagers_freeze_seal before update on public.wagers
   for each row execute function public.wagers_freeze_seal();
 
-drop trigger if exists wager_reveals_verify on public.wager_reveals;
 create trigger wager_reveals_verify before insert on public.wager_reveals
   for each row execute function public.wager_reveals_verify();
 
-drop trigger if exists wager_reveals_mark on public.wager_reveals;
 create trigger wager_reveals_mark after insert on public.wager_reveals
   for each row execute function public.wager_reveals_mark();
 
@@ -290,20 +287,5 @@ begin
 end;
 $$;
 
-drop trigger if exists wager_challenges_verify on public.wager_challenges;
 create trigger wager_challenges_verify before update on public.wager_challenges
   for each row execute function public.wager_challenges_verify();
-
--- ---------- Grants for RPCs ----------
-revoke all on function public.quiz_week_stats(text) from public;
-revoke all on function public.quiz_leaderboard(int) from public;
-revoke all on function public.wager_wall(int) from public;
-grant execute on function public.quiz_week_stats(text) to anon, authenticated;
-grant execute on function public.quiz_leaderboard(int) to anon, authenticated;
-grant execute on function public.wager_wall(int) to anon, authenticated;
-
--- Trigger functions are not meant to be called through the API.
-revoke all on function public.wagers_freeze_seal() from public, anon, authenticated;
-revoke all on function public.wager_reveals_verify() from public, anon, authenticated;
-revoke all on function public.wager_reveals_mark() from public, anon, authenticated;
-revoke all on function public.wager_challenges_verify() from public, anon, authenticated;
