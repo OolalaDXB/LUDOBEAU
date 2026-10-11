@@ -1,15 +1,18 @@
 /* ============================================================
    BEAU · Le Souffleur, voix générée par Mistral AI
-   Fonction serverless Vercel : POST /api/souffleur
+   Supabase Edge Function : POST /functions/v1/souffleur
    Corps : { kind, lang, game?, context? }  →  { line }
    kind : quiz | victory | defeat | comment | wager
-   La clé MISTRAL_API_KEY reste côté serveur. Sans clé, la route
-   répond 503 et les jeux gardent leurs répliques écrites.
 
-   Variables d'environnement (Vercel > Settings > Environment Variables) :
+   Secrets (Dashboard > Edge Functions > Secrets) :
    - MISTRAL_API_KEY   obligatoire pour activer la voix
    - MISTRAL_MODEL     facultatif, défaut "mistral-small-latest"
    - ALLOWED_ORIGINS   facultatif, origines autorisées séparées par des virgules
+   Sans clé, la fonction répond 503 et les jeux gardent leurs répliques écrites.
+
+   Déployée avec verify_jwt = false : la passerelle ne sait pas vérifier
+   les clés sb_publishable_. La clé `apikey` est vérifiée ici, contre
+   les clés publishable du projet (SUPABASE_PUBLISHABLE_KEYS).
    ============================================================ */
 
 const MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions";
@@ -77,27 +80,53 @@ function clean(s) {
     .slice(0, 280);
 }
 
-function readBody(req) {
-  if (req.body && typeof req.body === "object") return req.body;
-  try { return JSON.parse(req.body || "{}"); } catch (e) { return {}; }
+function env(name) {
+  try { return Deno.env.get(name) || ""; } catch (_e) { return ""; }
 }
 
-export default async function handler(req, res) {
-  res.setHeader("Cache-Control", "no-store");
-  const origin = req.headers.origin || "";
-  const allowed = (process.env.ALLOWED_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean);
-  if (allowed.length && origin && !allowed.includes(origin)) return res.status(403).json({ error: "origin" });
+/* Clés acceptées dans l'en-tête apikey : publishable du projet (+ anon legacy). */
+function knownKeys() {
+  const keys = [];
+  try { keys.push(...Object.values(JSON.parse(env("SUPABASE_PUBLISHABLE_KEYS") || "{}"))); } catch (_e) { /* format inattendu */ }
+  if (env("SUPABASE_ANON_KEY")) keys.push(env("SUPABASE_ANON_KEY"));
+  return keys.filter(Boolean);
+}
 
-  if (req.method !== "POST") { res.setHeader("Allow", "POST"); return res.status(405).json({ error: "method" }); }
-  const key = process.env.MISTRAL_API_KEY;
-  if (!key) return res.status(503).json({ error: "souffleur_offline" });
+function cors(origin) {
+  const allowed = env("ALLOWED_ORIGINS").split(",").map((s) => s.trim()).filter(Boolean);
+  const allow = !allowed.length ? "*" : allowed.includes(origin) ? origin : allowed[0];
+  return {
+    "Access-Control-Allow-Origin": allow,
+    "Access-Control-Allow-Headers": "apikey, authorization, content-type, x-client-info",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Vary": "Origin",
+  };
+}
 
-  const ip = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim() || "unknown";
-  if (limited(ip)) return res.status(429).json({ error: "rate_limited" });
+export async function handle(req) {
+  const origin = req.headers.get("origin") || "";
+  const headers = { ...cors(origin), "Content-Type": "application/json", "Cache-Control": "no-store" };
+  const reply = (status, body) => new Response(JSON.stringify(body), { status, headers });
 
-  const body = readBody(req);
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers });
+  if (req.method !== "POST") return reply(405, { error: "method" });
+
+  const allowed = env("ALLOWED_ORIGINS").split(",").map((s) => s.trim()).filter(Boolean);
+  if (allowed.length && origin && !allowed.includes(origin)) return reply(403, { error: "origin" });
+
+  const keys = knownKeys();
+  if (keys.length && !keys.includes(req.headers.get("apikey") || "")) return reply(401, { error: "apikey" });
+
+  const key = env("MISTRAL_API_KEY");
+  if (!key) return reply(503, { error: "souffleur_offline" });
+
+  const ip = (req.headers.get("x-forwarded-for") || "").split(",")[0].trim() || "unknown";
+  if (limited(ip)) return reply(429, { error: "rate_limited" });
+
+  let body = {};
+  try { body = await req.json(); } catch (_e) { return reply(400, { error: "json" }); }
   const kind = KINDS.includes(body.kind) ? body.kind : null;
-  if (!kind) return res.status(400).json({ error: "kind" });
+  if (!kind) return reply(400, { error: "kind" });
   const lang = body.lang === "en" ? "en" : "fr";
   const game = String(body.game || "").slice(0, 40);
   const context = JSON.stringify(body.context ?? {}).slice(0, MAX_CONTEXT);
@@ -110,7 +139,7 @@ export default async function handler(req, res) {
       signal: ctrl.signal,
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
       body: JSON.stringify({
-        model: process.env.MISTRAL_MODEL || "mistral-small-latest",
+        model: env("MISTRAL_MODEL") || "mistral-small-latest",
         temperature: 0.7,
         max_tokens: MAX_TOKENS,
         messages: [
@@ -119,14 +148,16 @@ export default async function handler(req, res) {
         ],
       }),
     });
-    if (!r.ok) return res.status(502).json({ error: "mistral", status: r.status });
+    if (!r.ok) return reply(502, { error: "mistral", status: r.status });
     const data = await r.json();
     const line = clean(data?.choices?.[0]?.message?.content);
-    if (!line) return res.status(502).json({ error: "empty" });
-    return res.status(200).json({ line });
+    if (!line) return reply(502, { error: "empty" });
+    return reply(200, { line });
   } catch (e) {
-    return res.status(e.name === "AbortError" ? 504 : 502).json({ error: "upstream" });
+    return reply(e && e.name === "AbortError" ? 504 : 502, { error: "upstream" });
   } finally {
     clearTimeout(timer);
   }
 }
+
+Deno.serve(handle);

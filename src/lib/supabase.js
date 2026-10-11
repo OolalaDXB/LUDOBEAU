@@ -10,5 +10,7 @@ const DEFAULT_KEY = "sb_publishable_2XjenDmZLizD7_KXnlreeQ_e_3XKJgy";
 const url = import.meta.env.VITE_SUPABASE_URL || DEFAULT_URL;
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY || DEFAULT_KEY;
 
+export const supabaseUrl = url;
+export const supabaseKey = key;
 export const supabase = url && key ? createClient(url, key, { auth: { persistSession: true, autoRefreshToken: true } }) : null;
 export const supabaseReady = !!supabase;

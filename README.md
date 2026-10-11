@@ -40,13 +40,12 @@ Ce que ça active :
 
 ## Le Souffleur parle avec Mistral AI
 
-`api/souffleur.js` est une fonction serverless Vercel (`POST /api/souffleur`) qui fait parler le Souffleur via l'API Mistral. La clé reste côté serveur.
+La voix générée passe par la Supabase Edge Function `souffleur` du projet LudoBeau (`supabase/functions/souffleur/index.ts`, déployée, `verify_jwt = false` car la passerelle ne vérifie pas les clés `sb_publishable_` : la fonction contrôle elle-même l'en-tête `apikey`). La clé Mistral reste un secret Supabase.
 
-1. Vercel > Settings > Environment Variables : `MISTRAL_API_KEY` (obligatoire), `MISTRAL_MODEL` (défaut `mistral-small-latest`), `ALLOWED_ORIGINS` (facultatif, ex. `https://ludobeau.vercel.app`).
-2. Redéployer. Rien d'autre à changer dans le code.
+Pour l'activer : Dashboard Supabase > Edge Functions > Secrets, ajouter `MISTRAL_API_KEY`. Facultatif : `MISTRAL_MODEL` (défaut `mistral-small-latest`), `ALLOWED_ORIGINS` (ex. `https://ludobeau.vercel.app`). Pas de redéploiement nécessaire.
 
 Corps : `{ kind, lang, game?, context? }`, réponse `{ line }`. Types : `quiz` (réaction au choix du dilemme), `victory`, `defeat` (pique gentille), `comment` (moment de partie), `wager` (lisibilité d'une prédiction). Le persona (quiet luxury, vouvoiement, pas de conseil financier personnalisé, mises symboliques) est dans le prompt système.
 
-Côté client, `src/games/souffleur-ai.js` expose `askSouffleur(req)` et `useSouffleurLine(req, repli)` : la réplique écrite s'affiche tout de suite et la voix générée la remplace si elle arrive (6 s max). Sans clé, la route répond 503 et la salle garde ses répliques écrites. Déjà branché : quiz (après la réponse) et pop-ups de victoire et de défaite. `VITE_SOUFFLEUR_AI=off` coupe les appels. En local, `npx vercel dev` sert l'app et la route ensemble.
+Côté client, `src/games/souffleur-ai.js` expose `askSouffleur(req)` et `useSouffleurLine(req, repli)` : la réplique écrite s'affiche tout de suite et la voix générée la remplace si elle arrive (6 s max). Sans clé, la fonction répond 503 et la salle garde ses répliques écrites. Déjà branché : quiz (après la réponse) et pop-ups de victoire et de défaite. `VITE_SOUFFLEUR_AI=off` coupe les appels.
 
 Mises symboliques uniquement : BEAU n'est pas une salle de paris.
