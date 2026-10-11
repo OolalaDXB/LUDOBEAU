@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import Celebration from "./beau-celebration.jsx";
 
 /* ============================================================
    BEAU · LE SOUFFLEUR — Échiquier quiet-luxury
@@ -416,7 +417,9 @@ export default function BeauEchiquier({ lang = "fr" }) {
   const [level, setLevel] = useState("doux");
   const [mode, setMode] = useState("solo"); // solo | duo
   const [showRules, setShowRules] = useState(false);
+  const [cele, setCele] = useState(null);
   const histRef = useRef([]);
+  useEffect(() => { if (!over) setCele(null); }, [over]);
 
   const allLegal = useCallback((b, col, st) => legalMoves(b, col, st), []);
 
@@ -437,11 +440,13 @@ export default function BeauEchiquier({ lang = "fr" }) {
       else if (m.promo) l = t.duoPromo(side);
       setLine(l);
       if (next.length === 0) { setOver(true); setStatus(check ? t.duoStatusMate(t.sideShort(mover)) : t.duoStatusStale); }
+      if (info.mate) setCele({ winner: side });
       else setStatus(check ? t.duoStatusCheck(t.sideShort(nextCol)) : t.duoStatusTurn(t.sideShort(nextCol)));
       return;
     }
     setLine(souffleurLine(nb, ns, m, mover, info, t));
     if (next.length === 0) { setOver(true); setStatus(check ? (mover==="w"?t.mateWin:t.mateLoss) : t.staleDraw); }
+    if (info.mate && mover === "w") setCele({});
     else setStatus(check ? (nextCol==="w"?t.checkYou:t.checkAi) : nextCol==="w"?t.yourMove:t.thinking);
   }, [allLegal, mode, t]);
 
@@ -538,6 +543,7 @@ export default function BeauEchiquier({ lang = "fr" }) {
   return (
     <div style={S.page}>
       <style>{CSS}</style>
+      <Celebration open={!!cele} lang={lang} winner={cele && cele.winner} message={line} onReplay={() => { setCele(null); newGame(); }} onClose={() => setCele(null)} />
       <div style={S.shell}>
         <header style={S.head}>
           <div style={S.brand}>BEAU</div>

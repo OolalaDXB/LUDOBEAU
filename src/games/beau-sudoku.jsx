@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import Celebration from "./beau-celebration.jsx";
 
 /* ============================================================
    BEAU · Sudoku
@@ -114,11 +115,12 @@ export default function BeauSudoku({ lang = "fr" }) {
   const [level, setLevel] = useState("doux");
   const [loading, setLoading] = useState(true);
   const [won, setWon] = useState(false);
+  const [cele, setCele] = useState(false);
   const [line, setLine] = useState(t.intro);
   const boardRef = useRef(null);
 
   const newGame = useCallback((lvl) => {
-    setLoading(true); setWon(false); setSelected(null);
+    setLoading(true); setWon(false); setCele(false); setSelected(null);
     setLine(t.drawing);
     setTimeout(() => {
       const { puzzle: pz, solution: sol } = generate(LEVELS[lvl]);
@@ -158,7 +160,7 @@ export default function BeauSudoku({ lang = "fr" }) {
   const checkWin = useCallback((next) => {
     if (!solution) return;
     for (let i = 0; i < 81; i++) if (next[i] !== solution[i]) return;
-    setWon(true); setLine(t.solved);
+    setWon(true); setLine(t.solved); setCele(true);
   }, [solution]);
 
   const place = useCallback((v) => {
@@ -236,6 +238,7 @@ export default function BeauSudoku({ lang = "fr" }) {
   return (
     <div style={S.page}>
       <style>{CSS}</style>
+      <Celebration open={cele} lang={lang} message={t.solved} onReplay={() => { setCele(false); newGame(level); }} onClose={() => setCele(false)} />
       <div style={S.shell}>
         <header style={S.head}>
           <div style={S.brand}>BEAU</div>

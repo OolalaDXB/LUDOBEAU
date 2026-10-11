@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import Celebration from "./beau-celebration.jsx";
 
 /* ============================================================
    BEAU · Escales / Ports of Call · MULTIJOUEUR (hot-seat)
@@ -281,6 +282,7 @@ export default function BeauEscalesMulti({ lang = "fr" }) {
   const [arrival, setArrival] = useState(null);
   const [line, setLine] = useState(t.vLobby);
   const [winner, setWinner] = useState(null);
+  const [cele, setCele] = useState(false);
 
   const playersRef = useRef(players); useEffect(() => { playersRef.current = players; });
   const clockRef = useRef(clock); useEffect(() => { clockRef.current = clock; });
@@ -471,6 +473,8 @@ export default function BeauEscalesMulti({ lang = "fr" }) {
     schedule(players);
   };
 
+  useEffect(() => { setCele(phase === "over" && !!winner); }, [phase, winner]);
+
   const restart = () => {
     setPhase("lobby"); setPlayers([]); setWinner(null); setArrival(null);
     setClock(1); prevActor.current = null; navigating.current = false;
@@ -547,6 +551,7 @@ export default function BeauEscalesMulti({ lang = "fr" }) {
   return (
     <div style={S.page}>
       <style>{CSS}</style>
+      <Celebration open={cele && phase === "over" && !!winner} lang={lang} winner={winner && winner.name} accent={winner && winner.color && winner.color.hex} message={line} onReplay={() => { setCele(false); restart(); }} onClose={() => setCele(false)} />
       <div style={S.shell}>
         {Header}
 

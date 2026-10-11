@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import Celebration from "./beau-celebration.jsx";
 
 /* ============================================================
    BEAU · Puissance 4 / Connect Four
@@ -148,6 +149,8 @@ export default function BeauPuissance4({ lang = "fr" }) {
   const [turn, setTurn] = useState(1);
   const [over, setOver] = useState(false);
   const [winner, setWinner] = useState(0);
+  const [cele, setCele] = useState(null);
+  useEffect(() => { if (!over) setCele(null); }, [over]);
   const [winCells, setWinCells] = useState([]);
   const [mode, setMode] = useState("solo");     // solo | duo
   const [level, setLevel] = useState("doux");   // doux | malin
@@ -173,6 +176,8 @@ export default function BeauPuissance4({ lang = "fr" }) {
     if (wl) {
       setOver(true); setWinner(p); setWinCells(wl);
       setScore((s) => ({ ...s, [p]: s[p] + 1 }));
+      if (mode === "duo") setCele({ winner: t.names[p], accent: COLOR[p] });
+      else if (p === 1) setCele({ accent: COLOR[1] });
       setLine(mode === "solo" ? (p === 1 ? t.youWin : t.aiWin) : t.duoWin(t.names[p]));
     } else if (full(ng)) {
       setOver(true); setWinner(0); setLine(t.draw);
@@ -225,6 +230,7 @@ export default function BeauPuissance4({ lang = "fr" }) {
   return (
     <div style={S.page}>
       <style>{CSS}</style>
+      <Celebration open={!!cele} lang={lang} winner={cele && cele.winner} accent={cele && cele.accent} message={line} onReplay={() => { setCele(null); newGame(true); }} onClose={() => setCele(null)} />
       <div style={S.shell}>
         <header style={S.head}>
           <div style={S.brand}>BEAU</div>
