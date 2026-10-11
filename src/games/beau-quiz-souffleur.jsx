@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useSouffleurLine } from "./souffleur-ai.js";
 import { loadQuizHist, saveQuizHist, recordQuizAnswer, syncQuizHist, fetchQuizWeekStats, fetchQuizLeaderboard, useAccount, cloudReady } from "./storage.js";
 
 /* ============================================================
@@ -189,6 +190,11 @@ export default function BeauQuizSouffleur({ lang = "fr" }) {
     fetchQuizWeekStats(wk).then((c) => { if (live) setRoom(c); });
     return () => { live = false; };
   }, [weekly, revealed, wk, roomTick, user]);
+  /* réaction du Souffleur au choix (Mistral si branché, sinon la phrase écrite) */
+  const postLine = useSouffleurLine(
+    revealed && picked != null ? { kind: "quiz", lang, game: "quiz", context: { question: item.q, options: item.options, pick: item.options[picked], leaning: item.options[raw.lean], verdict: item.verdict } } : null,
+    u.voicePost,
+  );
   const roomTotal = room ? room.reduce((a, b) => a + b, 0) : 0;
   const openBoard = () => { setBoard("loading"); fetchQuizLeaderboard().then((rows) => setBoard(rows || [])); };
 
@@ -216,7 +222,7 @@ export default function BeauQuizSouffleur({ lang = "fr" }) {
 
         <div style={S.voice}>
           <span style={S.voiceMark}>—</span>
-          <span style={S.voiceText}>{revealed ? u.voicePost : u.voicePre}</span>
+          <span style={S.voiceText}>{revealed ? postLine : u.voicePre}</span>
         </div>
 
         <div style={S.card}>

@@ -252,8 +252,8 @@ export default function BeauTawla({ lang = "fr" }) {
   const [over, setOver] = useState(false);
   const [thinking, setThinking] = useState(false);
   const [showRules, setShowRules] = useState(false);
-  const [cele, setCele] = useState(false);
-  useEffect(() => { if (!over) setCele(false); }, [over]);
+  const [cele, setCele] = useState(null); /* null | "win" | "defeat" */
+  useEffect(() => { if (!over) setCele(null); }, [over]);
 
   const recomputeTargets = useCallback((g, sel, dl) => {
     if (sel === null) return [];
@@ -267,8 +267,8 @@ export default function BeauTawla({ lang = "fr" }) {
 
   const endTurn = useCallback((g) => {
     setSelected(null); setTargets([]);
-    if (g.off.w === 15) { setOver(true); setStatus(t.statusWinW); setLine(t.lineWinW); setCele(true); return; }
-    if (g.off.b === 15) { setOver(true); setStatus(t.statusWinB); setLine(t.lineWinB); return; }
+    if (g.off.w === 15) { setOver(true); setStatus(t.statusWinW); setLine(t.lineWinW); setCele("win"); return; }
+    if (g.off.b === 15) { setOver(true); setStatus(t.statusWinB); setLine(t.lineWinB); setCele("defeat"); return; }
     setTurn((t) => (t === "w" ? "b" : "w"));
     setDice([]); setShown([]); setRolled(false);
   }, []);
@@ -425,7 +425,7 @@ export default function BeauTawla({ lang = "fr" }) {
   return (
     <div style={S.page}>
       <style>{CSS}</style>
-      <Celebration open={cele} lang={lang} message={t.lineWinW} onReplay={() => { setCele(false); newGame(); }} onClose={() => setCele(false)} />
+      <Celebration open={!!cele} lang={lang} game="tawla" variant={cele || "win"} message={cele === "defeat" ? t.lineWinB : t.lineWinW} onReplay={() => { setCele(null); newGame(); }} onClose={() => setCele(null)} />
       <div style={S.shell}>
         <header style={S.head}>
           <div style={S.brand}>BEAU</div>

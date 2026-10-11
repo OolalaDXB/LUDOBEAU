@@ -49,7 +49,7 @@ const STR = {
     fineCloud: "Mises symboliques : l'honneur, un café. BEAU n'est pas une salle de paris. Seul le sceau rejoint votre compte ; la prédiction reste sur cet appareil jusqu'à ce que vous la révéliez.",
     tabWall: "Le mur", wallLine: "Les paris révélés de la salle. Chacun a été vérifié contre son sceau.",
     wallEmpty: "Aucun pari révélé pour l'instant.", wallBy: (n) => `par ${n}`, wallOffline: "Le mur s'affiche quand la salle est reliée à sa base.",
-    celeTitle: "Pari gagné", celeNew: "Sceller un autre pari",
+    celeTitle: "Pari gagné", celeLost: "Pari perdu", celeNew: "Sceller un autre pari",
     elsewhere: "Scellé sur un autre appareil : la prédiction s'y trouve, révélez-la depuis là-bas.",
     locale: "fr-FR", dash: "—",
   },
@@ -81,7 +81,7 @@ const STR = {
     fineCloud: "Symbolic stakes: your honour, a coffee. BEAU is not a betting house. Only the seal reaches your account; the prediction stays on this device until you reveal it.",
     tabWall: "The wall", wallLine: "The room's revealed wagers. Each one was checked against its seal.",
     wallEmpty: "No revealed wagers yet.", wallBy: (n) => `by ${n}`, wallOffline: "The wall appears once the room is linked to its database.",
-    celeTitle: "Wager won", celeNew: "Seal another wager",
+    celeTitle: "Wager won", celeLost: "Wager lost", celeNew: "Seal another wager",
     elsewhere: "Sealed on another device: the prediction lives there, reveal it from there.",
     locale: "en-GB", dash: "—",
   },
@@ -161,7 +161,7 @@ export default function BeauPariScelle({ lang = "fr" }) {
     copy(tok, () => toast(t.copiedProof));
     setLine(t.revealedLine);
   };
-  const setOutcome = (bet, o) => { if (o === "won") setCele(bet); setBets((b) => b.map((x) => (x.id === bet.id ? { ...x, outcome: o } : x))); pushBetOutcome({ ...bet, outcome: o }); };
+  const setOutcome = (bet, o) => { setCele({ bet, won: o === "won" }); setBets((b) => b.map((x) => (x.id === bet.id ? { ...x, outcome: o } : x))); pushBetOutcome({ ...bet, outcome: o }); };
   const remove = (bet) => { setBets((b) => b.filter((x) => x.id !== bet.id)); deleteBetRemote(bet); };
 
   const doVerify = async () => {
@@ -178,7 +178,7 @@ export default function BeauPariScelle({ lang = "fr" }) {
   return (
     <div style={S.page}>
       <style>{CSS}</style>
-      <Celebration open={!!cele} lang={lang} title={t.celeTitle} message={cele && cele.pred} replayLabel={t.celeNew} onReplay={() => { setCele(null); setTab("new"); }} onClose={() => setCele(null)} />
+      <Celebration open={!!cele} lang={lang} game="sealed-wager" variant={cele && !cele.won ? "wagerLost" : "win"} title={cele && (cele.won ? t.celeTitle : t.celeLost)} message={cele && cele.bet.pred} replayLabel={t.celeNew} onReplay={() => { setCele(null); setTab("new"); }} onClose={() => setCele(null)} />
       <div style={S.shell}>
         <header style={S.head}>
           <div style={S.brand}>BEAU</div>

@@ -38,4 +38,15 @@ Ce que ça active :
 - **Pari scellé** : `wagers` ne reçoit que le sceau (empreinte, échéance, mise). La prédiction et le sel restent sur l'appareil jusqu'à la révélation, écrite dans `wager_reveals` : la base recalcule le SHA-256 et refuse toute révélation non concordante. Un sceau ne peut plus être modifié. Mur public des paris révélés (`wager_wall`).
 - **Paris croisés** : table `wager_challenges` prête (contre-sceau, révélation vérifiée), interface à venir.
 
+## Le Souffleur parle avec Mistral AI
+
+`api/souffleur.js` est une fonction serverless Vercel (`POST /api/souffleur`) qui fait parler le Souffleur via l'API Mistral. La clé reste côté serveur.
+
+1. Vercel > Settings > Environment Variables : `MISTRAL_API_KEY` (obligatoire), `MISTRAL_MODEL` (défaut `mistral-small-latest`), `ALLOWED_ORIGINS` (facultatif, ex. `https://ludobeau.vercel.app`).
+2. Redéployer. Rien d'autre à changer dans le code.
+
+Corps : `{ kind, lang, game?, context? }`, réponse `{ line }`. Types : `quiz` (réaction au choix du dilemme), `victory`, `defeat` (pique gentille), `comment` (moment de partie), `wager` (lisibilité d'une prédiction). Le persona (quiet luxury, vouvoiement, pas de conseil financier personnalisé, mises symboliques) est dans le prompt système.
+
+Côté client, `src/games/souffleur-ai.js` expose `askSouffleur(req)` et `useSouffleurLine(req, repli)` : la réplique écrite s'affiche tout de suite et la voix générée la remplace si elle arrive (6 s max). Sans clé, la route répond 503 et la salle garde ses répliques écrites. Déjà branché : quiz (après la réponse) et pop-ups de victoire et de défaite. `VITE_SOUFFLEUR_AI=off` coupe les appels. En local, `npx vercel dev` sert l'app et la route ensemble.
+
 Mises symboliques uniquement : BEAU n'est pas une salle de paris.

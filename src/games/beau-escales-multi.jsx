@@ -551,7 +551,7 @@ export default function BeauEscalesMulti({ lang = "fr" }) {
   return (
     <div style={S.page}>
       <style>{CSS}</style>
-      <Celebration open={cele && phase === "over" && !!winner} lang={lang} winner={winner && winner.name} accent={winner && winner.color && winner.color.hex} message={line} onReplay={() => { setCele(false); restart(); }} onClose={() => setCele(false)} />
+      <Celebration open={cele && phase === "over" && !!winner} lang={lang} game="ports-of-call" winner={winner && winner.name} accent={winner && winner.color && winner.color.hex} message={line} onReplay={() => { setCele(false); restart(); }} onClose={() => setCele(false)} />
       <div style={S.shell}>
         {Header}
 

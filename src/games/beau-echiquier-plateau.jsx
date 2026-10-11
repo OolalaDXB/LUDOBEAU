@@ -446,7 +446,7 @@ export default function BeauEchiquier({ lang = "fr" }) {
     }
     setLine(souffleurLine(nb, ns, m, mover, info, t));
     if (next.length === 0) { setOver(true); setStatus(check ? (mover==="w"?t.mateWin:t.mateLoss) : t.staleDraw); }
-    if (info.mate && mover === "w") setCele({});
+    if (info.mate) setCele(mover === "w" ? {} : { defeat: true });
     else setStatus(check ? (nextCol==="w"?t.checkYou:t.checkAi) : nextCol==="w"?t.yourMove:t.thinking);
   }, [allLegal, mode, t]);
 
@@ -543,7 +543,7 @@ export default function BeauEchiquier({ lang = "fr" }) {
   return (
     <div style={S.page}>
       <style>{CSS}</style>
-      <Celebration open={!!cele} lang={lang} winner={cele && cele.winner} message={line} onReplay={() => { setCele(null); newGame(); }} onClose={() => setCele(null)} />
+      <Celebration open={!!cele} lang={lang} game="chess" variant={cele && cele.defeat ? "defeat" : "win"} winner={cele && cele.winner} message={line} onReplay={() => { setCele(null); newGame(); }} onClose={() => setCele(null)} />
       <div style={S.shell}>
         <header style={S.head}>
           <div style={S.brand}>BEAU</div>
