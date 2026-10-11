@@ -1,0 +1,3256 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>BEAU · Jeux</title>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap');
+  html,body{margin:0;padding:0;background:#F1EADD;font-family:'Cormorant Garamond',Georgia,serif;}
+  #boot{min-height:100vh;display:flex;align-items:center;justify-content:center;color:#6B6557;font-style:italic;font-size:20px;}
+</style>
+</head>
+<body>
+<div id="root"><div id="boot">…</div></div>
+<script type="text/babel" data-presets="react">
+const {useState, useEffect, useRef, useCallback, useMemo} = React;
+/* ==== Echecs ==== */
+const Echecs = (function(){
+const {useState,useEffect,useRef,useCallback,useMemo}=React;
+
+/* ============================================================
+   BEAU · LE SOUFFLEUR — Échiquier quiet-luxury
+   Plateau retravaillé : cadre marqueté, coordonnées gravées,
+   surface encastrée, matière, indices ciselés.
+   Moteur identique : coups légaux, échec/mat/pat, roque,
+   en passant, promotion, IA negamax + voix du Souffleur.
+   ============================================================ */
+
+/* ---------- Palette ---------- */
+const C = {
+  bg: "#F1EADD",
+  frame: "#DCD0B8",        // bois clair du cadre
+  frameEdge: "#CDBE9F",
+  inlay: "#B07A4E",        // filet de marqueterie (chaud)
+  light: "#ECE3D0",        // case claire (buis)
+  lightHi: "rgba(255,255,255,0.40)",
+  dark: "#95A8A1",         // case sombre (pétrole pâle)
+  darkHi: "rgba(255,255,255,0.16)",
+  ink: "#201E19",          // joueur
+  terra: "#A8553B",        // Souffleur
+  hair: "rgba(32,30,25,0.14)",
+  muted: "#6B6557",
+  dot: "rgba(32,30,25,0.32)",
+  bone: "#F5EEDC",         // armée claire (ivoire)
+};
+
+const VAL = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 0 };
+
+/* ---------- Pièces dessinées (SVG) ----------
+   Vous = corps ivoire + liseré encre · le Souffleur = encre pleine.
+   ViewBox 0..45, base en bas. */
+function Piece({ type, color }) {
+  const fill = color === "w" ? C.bone : C.ink;
+  const stroke = color === "w" ? C.ink : "#100F0C";
+  const accent = color === "w" ? C.ink : C.bone;
+  const base = (
+    <>
+      <path d="M14.5 34.5 C14.5 32.8 18 32 22.5 32 C27 32 30.5 32.8 30.5 34.5 C30.5 36.2 27 37 22.5 37 C18 37 14.5 36.2 14.5 34.5 Z" />
+      <ellipse cx="22.5" cy="40" rx="12" ry="2.6" />
+    </>
+  );
+  let top = null;
+  switch (type) {
+    case "p": top = (<>
+      <circle cx="22.5" cy="10" r="4.3" />
+      <path d="M18.8 14.2 C18 18 16.5 21 15.8 25 C15.4 28 16.4 30 16 32 H29 C28.6 30 29.6 28 29.2 25 C28.5 21 27 18 26.2 14.2 C25 15.3 23.9 15.7 22.5 15.7 C21.1 15.7 20 15.3 18.8 14.2 Z" />
+    </>); break;
+    case "r": top = (<>
+      <path d="M13 13.5 V9 H16.5 V11 H20.5 V9 H24.5 V11 H28.5 V9 H32 V13.5 Z" />
+      <path d="M14.5 13.5 H30.5 L29.2 18 H15.8 Z" />
+      <path d="M15.6 18 H29.4 C29.4 24 31 29 31.5 32 H13.5 C14 29 15.6 24 15.6 18 Z" />
+    </>); break;
+    case "n": top = (<>
+      <path d="M24 8.5 C20 8 16.6 9.6 14.6 13 L12 16.2 C11 17.7 10.6 19.6 11 21 C11.3 22 12.3 22.1 13.1 21.5 L15.2 20 C14.2 22.6 13.7 24.6 14.2 26 C13.2 27.6 13.2 30 13.7 32 H30.6 C31.6 25.5 31.6 16.6 28.6 12.6 C27.1 10.5 25.9 9 24 8.5 Z" />
+      <path d="M24 8.5 L27 4.8 L28.2 9.3 Z" />
+      <circle cx="16.4" cy="15.2" r="1.15" fill={accent} stroke="none" />
+    </>); break;
+    case "b": top = (<>
+      <circle cx="22.5" cy="6.2" r="1.9" />
+      <path d="M22.5 8 C18 11 16.8 17 18 22 C18.6 25 17 29 16.4 32 H28.6 C28 29 26.4 25 27 22 C28.2 17 27 11 22.5 8 Z" />
+      <path d="M20.8 13.5 L24.2 16.5" fill="none" />
+    </>); break;
+    case "q": top = (<>
+      <circle cx="11.5" cy="8.5" r="1.9" /><circle cx="17" cy="6.8" r="1.9" /><circle cx="22.5" cy="5.8" r="2.1" /><circle cx="28" cy="6.8" r="1.9" /><circle cx="33.5" cy="8.5" r="1.9" />
+      <path d="M12 9.5 L14.7 19 C17 20.2 28 20.2 30.3 19 L33 9.5 L28.5 14.8 L25 8.7 L22.5 14.8 L20 8.7 L16.5 14.8 Z" />
+      <path d="M14.7 19 C15.2 24 16 28 16.2 32 H28.8 C29 28 29.8 24 30.3 19 C28 20.3 25 21 22.5 21 C20 21 17 20.3 14.7 19 Z" />
+    </>); break;
+    case "k": top = (<>
+      <path d="M21.4 2.8 H23.6 V5.4 H26.1 V7.6 H23.6 V11 H21.4 V7.6 H18.9 V5.4 H21.4 Z" />
+      <path d="M14 18.5 C16.5 12.8 28.5 12.8 31 18.5 C31 18.5 30 25.5 29 32 H16 C15 25.5 14 18.5 14 18.5 Z" />
+      <path d="M14 18.5 C18 16 27 16 31 18.5" fill="none" />
+    </>); break;
+    default: break;
+  }
+  return (
+    <svg viewBox="0 0 45 45" width="100%" height="100%" aria-hidden="true"
+      style={{ display: "block", filter: "drop-shadow(0 1.5px 1.5px rgba(32,30,25,0.28))", pointerEvents: "none" }}>
+      <g fill={fill} stroke={stroke} strokeWidth="1.3" strokeLinejoin="round" strokeLinecap="round">
+        {top}{base}
+      </g>
+    </svg>
+  );
+}
+
+/* ---------- Tables de position (perspective blanc, rangée 0 = rangée 1) ---------- */
+const PST = {
+  p: [[0,0,0,0,0,0,0,0],[5,10,10,-20,-20,10,10,5],[5,-5,-10,0,0,-10,-5,5],[0,0,0,20,20,0,0,0],[5,5,10,25,25,10,5,5],[10,10,20,30,30,20,10,10],[50,50,50,50,50,50,50,50],[0,0,0,0,0,0,0,0]],
+  n: [[-50,-40,-30,-30,-30,-30,-40,-50],[-40,-20,0,5,5,0,-20,-40],[-30,5,10,15,15,10,5,-30],[-30,0,15,20,20,15,0,-30],[-30,5,15,20,20,15,5,-30],[-30,0,10,15,15,10,0,-30],[-40,-20,0,0,0,0,-20,-40],[-50,-40,-30,-30,-30,-30,-40,-50]],
+  b: [[-20,-10,-10,-10,-10,-10,-10,-20],[-10,5,0,0,0,0,5,-10],[-10,10,10,10,10,10,10,-10],[-10,0,10,10,10,10,0,-10],[-10,5,5,10,10,5,5,-10],[-10,0,5,10,10,5,0,-10],[-10,0,0,0,0,0,0,-10],[-20,-10,-10,-10,-10,-10,-10,-20]],
+  r: [[0,0,0,5,5,0,0,0],[-5,0,0,0,0,0,0,-5],[-5,0,0,0,0,0,0,-5],[-5,0,0,0,0,0,0,-5],[-5,0,0,0,0,0,0,-5],[-5,0,0,0,0,0,0,-5],[5,10,10,10,10,10,10,5],[0,0,0,0,0,0,0,0]],
+  q: [[-20,-10,-10,-5,-5,-10,-10,-20],[-10,0,5,0,0,0,0,-10],[-10,5,5,5,5,5,0,-10],[-5,0,5,5,5,5,0,-5],[-5,0,5,5,5,5,0,-5],[-10,0,5,5,5,5,0,-10],[-10,0,0,0,0,0,0,-10],[-20,-10,-10,-5,-5,-10,-10,-20]],
+  k: [[20,30,10,0,0,10,30,20],[20,20,0,0,0,0,20,20],[-10,-20,-20,-20,-20,-20,-20,-10],[-20,-30,-30,-40,-40,-30,-30,-20],[-30,-40,-40,-50,-50,-40,-40,-30],[-30,-40,-40,-50,-50,-40,-40,-30],[-30,-40,-40,-50,-50,-40,-40,-30],[-30,-40,-40,-50,-50,-40,-40,-30]],
+};
+const pstVal = (t, r, c, col) => (col === "w" ? PST[t][7 - r][c] : PST[t][r][c]);
+
+/* ---------- État initial ---------- */
+function initialBoard() {
+  const back = ["r","n","b","q","k","b","n","r"];
+  const b = Array.from({ length: 8 }, () => Array(8).fill(null));
+  for (let c = 0; c < 8; c++) {
+    b[0][c] = { t: back[c], c: "b" };
+    b[1][c] = { t: "p", c: "b" };
+    b[6][c] = { t: "p", c: "w" };
+    b[7][c] = { t: back[c], c: "w" };
+  }
+  return b;
+}
+const initialState = () => ({ castling: { wK: true, wQ: true, bK: true, bQ: true }, ep: null });
+
+/* ---------- Utilitaires ---------- */
+const inB = (r, c) => r >= 0 && r < 8 && c >= 0 && c < 8;
+const opp = (col) => (col === "w" ? "b" : "w");
+const cloneBoard = (b) => b.map((row) => row.slice());
+function findKing(b, col) {
+  for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
+    const p = b[r][c]; if (p && p.t === "k" && p.c === col) return [r, c];
+  }
+  return null;
+}
+const KN = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+const KG = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
+const DIAG = [[-1,-1],[-1,1],[1,-1],[1,1]];
+const ORTH = [[-1,0],[1,0],[0,-1],[0,1]];
+
+function isAttacked(b, r, c, by) {
+  if (by === "w") {
+    if (inB(r+1,c-1) && b[r+1][c-1] && b[r+1][c-1].c==="w" && b[r+1][c-1].t==="p") return true;
+    if (inB(r+1,c+1) && b[r+1][c+1] && b[r+1][c+1].c==="w" && b[r+1][c+1].t==="p") return true;
+  } else {
+    if (inB(r-1,c-1) && b[r-1][c-1] && b[r-1][c-1].c==="b" && b[r-1][c-1].t==="p") return true;
+    if (inB(r-1,c+1) && b[r-1][c+1] && b[r-1][c+1].c==="b" && b[r-1][c+1].t==="p") return true;
+  }
+  for (const [dr,dc] of KN) { const rr=r+dr,cc=c+dc; if (inB(rr,cc)) { const p=b[rr][cc]; if (p&&p.c===by&&p.t==="n") return true; } }
+  for (const [dr,dc] of KG) { const rr=r+dr,cc=c+dc; if (inB(rr,cc)) { const p=b[rr][cc]; if (p&&p.c===by&&p.t==="k") return true; } }
+  for (const [dr,dc] of DIAG) { let rr=r+dr,cc=c+dc; while (inB(rr,cc)) { const p=b[rr][cc]; if (p){ if(p.c===by&&(p.t==="b"||p.t==="q")) return true; break; } rr+=dr; cc+=dc; } }
+  for (const [dr,dc] of ORTH) { let rr=r+dr,cc=c+dc; while (inB(rr,cc)) { const p=b[rr][cc]; if (p){ if(p.c===by&&(p.t==="r"||p.t==="q")) return true; break; } rr+=dr; cc+=dc; } }
+  return false;
+}
+function inCheck(b, col) { const k = findKing(b, col); return k ? isAttacked(b, k[0], k[1], opp(col)) : false; }
+
+/* ---------- Coups pseudo-légaux ---------- */
+function pseudoMoves(b, col, st) {
+  const moves = [];
+  const dir = col === "w" ? -1 : 1;
+  const startRank = col === "w" ? 6 : 1;
+  const promoRank = col === "w" ? 0 : 7;
+  for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
+    const p = b[r][c]; if (!p || p.c !== col) continue;
+    const add = (tr, tc, flags = {}) => moves.push({ from: [r, c], to: [tr, tc], t: p.t, ...flags });
+    if (p.t === "p") {
+      if (inB(r+dir,c) && !b[r+dir][c]) {
+        if (r+dir===promoRank) add(r+dir,c,{promo:"q"}); else add(r+dir,c);
+        if (r===startRank && !b[r+2*dir][c]) add(r+2*dir,c,{double:true});
+      }
+      for (const dc of [-1,1]) {
+        const tr=r+dir, tc=c+dc; if (!inB(tr,tc)) continue;
+        const tp=b[tr][tc];
+        if (tp && tp.c!==col) { if (tr===promoRank) add(tr,tc,{promo:"q"}); else add(tr,tc); }
+        else if (st.ep && st.ep[0]===tr && st.ep[1]===tc) add(tr,tc,{ep:true});
+      }
+    } else if (p.t === "n") {
+      for (const [dr,dc] of KN) { const tr=r+dr,tc=c+dc; if (inB(tr,tc)&&(!b[tr][tc]||b[tr][tc].c!==col)) add(tr,tc); }
+    } else if (p.t === "k") {
+      for (const [dr,dc] of KG) { const tr=r+dr,tc=c+dc; if (inB(tr,tc)&&(!b[tr][tc]||b[tr][tc].c!==col)) add(tr,tc); }
+      const rank = col==="w"?7:0;
+      const cK = col==="w"?st.castling.wK:st.castling.bK;
+      const cQ = col==="w"?st.castling.wQ:st.castling.bQ;
+      if (r===rank && c===4 && !inCheck(b,col)) {
+        if (cK && !b[rank][5] && !b[rank][6] && b[rank][7] && b[rank][7].t==="r" && !isAttacked(b,rank,5,opp(col)) && !isAttacked(b,rank,6,opp(col))) add(rank,6,{castle:"K"});
+        if (cQ && !b[rank][3] && !b[rank][2] && !b[rank][1] && b[rank][0] && b[rank][0].t==="r" && !isAttacked(b,rank,3,opp(col)) && !isAttacked(b,rank,2,opp(col))) add(rank,2,{castle:"Q"});
+      }
+    } else {
+      const dirs = p.t==="b"?DIAG:p.t==="r"?ORTH:DIAG.concat(ORTH);
+      for (const [dr,dc] of dirs) {
+        let tr=r+dr,tc=c+dc;
+        while (inB(tr,tc)) { const tp=b[tr][tc]; if (!tp) add(tr,tc); else { if (tp.c!==col) add(tr,tc); break; } tr+=dr; tc+=dc; }
+      }
+    }
+  }
+  return moves;
+}
+
+/* ---------- Application immuable ---------- */
+function applyMove(b, st, m) {
+  const nb = cloneBoard(b);
+  const piece = nb[m.from[0]][m.from[1]];
+  const col = piece.c;
+  let captured = nb[m.to[0]][m.to[1]];
+  nb[m.to[0]][m.to[1]] = m.promo ? { t: m.promo, c: col } : piece;
+  nb[m.from[0]][m.from[1]] = null;
+  if (m.ep) { const capR = col==="w"?m.to[0]+1:m.to[0]-1; captured = nb[capR][m.to[1]]; nb[capR][m.to[1]] = null; }
+  if (m.castle) { const rank=m.from[0]; if (m.castle==="K"){ nb[rank][5]=nb[rank][7]; nb[rank][7]=null; } else { nb[rank][3]=nb[rank][0]; nb[rank][0]=null; } }
+  const ns = { castling: { ...st.castling }, ep: null };
+  if (m.double) ns.ep = [(m.from[0]+m.to[0])/2, m.from[1]];
+  if (piece.t==="k") { if (col==="w"){ ns.castling.wK=false; ns.castling.wQ=false; } else { ns.castling.bK=false; ns.castling.bQ=false; } }
+  const touch = (r,c) => { if (r===7&&c===0) ns.castling.wQ=false; if (r===7&&c===7) ns.castling.wK=false; if (r===0&&c===0) ns.castling.bQ=false; if (r===0&&c===7) ns.castling.bK=false; };
+  touch(m.from[0],m.from[1]); touch(m.to[0],m.to[1]);
+  return { board: nb, state: ns, captured };
+}
+function legalMoves(b, col, st) {
+  const res = [];
+  for (const m of pseudoMoves(b, col, st)) { const { board: nb } = applyMove(b, st, m); if (!inCheck(nb, col)) res.push(m); }
+  return res;
+}
+
+/* ---------- Évaluation & recherche ---------- */
+function evalWhite(b) {
+  let s = 0;
+  for (let r=0;r<8;r++) for (let c=0;c<8;c++) { const p=b[r][c]; if (!p) continue; const v=VAL[p.t]+pstVal(p.t,r,c,p.c); s += p.c==="w"?v:-v; }
+  return s;
+}
+const evalSTM = (b, col) => (col==="w"?1:-1)*evalWhite(b);
+const MATE = 1000000;
+function orderMoves(b, moves) {
+  return moves.map((m) => { const tp=b[m.to[0]][m.to[1]]; const score=(tp?10*VAL[tp.t]-VAL[m.t]:0)+(m.promo?800:0); return {m,score}; })
+    .sort((a,z)=>z.score-a.score).map((x)=>x.m);
+}
+function quiesce(b, col, alpha, beta, st, qd) {
+  const stand = evalSTM(b, col);
+  if (stand >= beta) return beta;
+  if (alpha < stand) alpha = stand;
+  if (qd === 0) return alpha;
+  let caps = pseudoMoves(b, col, st).filter((m)=>b[m.to[0]][m.to[1]]||m.ep);
+  caps = orderMoves(b, caps);
+  for (const m of caps) {
+    const { board: nb, state: ns } = applyMove(b, st, m);
+    if (inCheck(nb, col)) continue;
+    const sc = -quiesce(nb, opp(col), -beta, -alpha, ns, qd-1);
+    if (sc >= beta) return beta;
+    if (sc > alpha) alpha = sc;
+  }
+  return alpha;
+}
+function negamax(b, col, depth, alpha, beta, st) {
+  if (depth === 0) return quiesce(b, col, alpha, beta, st, 4);
+  const moves = orderMoves(b, legalMoves(b, col, st));
+  if (moves.length === 0) return inCheck(b, col) ? -MATE - depth : 0;
+  let best = -Infinity;
+  for (const m of moves) {
+    const { board: nb, state: ns } = applyMove(b, st, m);
+    const sc = -negamax(nb, opp(col), depth-1, -beta, -alpha, ns);
+    if (sc > best) best = sc;
+    if (best > alpha) alpha = best;
+    if (alpha >= beta) break;
+  }
+  return best;
+}
+function bestMove(b, col, st, depth) {
+  const moves = orderMoves(b, legalMoves(b, col, st));
+  if (moves.length === 0) return null;
+  let best=null, bestScore=-Infinity, alpha=-Infinity;
+  for (const m of moves) {
+    const { board: nb, state: ns } = applyMove(b, st, m);
+    const sc = -negamax(nb, opp(col), depth-1, -Infinity, -alpha, ns);
+    if (sc > bestScore) { bestScore = sc; best = m; }
+    if (sc > alpha) alpha = sc;
+  }
+  return best;
+}
+
+/* ---------- Notation & voix du Souffleur ---------- */
+const FILES = "abcdefgh";
+const sq = (r, c) => FILES[c] + (8 - r);
+function souffleurLine(b, st, m, mover, info) {
+  if (info.mate) return mover==="w" ? "Mat. La position ne ment jamais — vous l'aviez vue venir." : "Mat. J'avais le tempo ; vous aviez l'élégance. Une autre ?";
+  if (info.stalemate) return "Pat. Personne ne perd, ce qui est une autre façon de ne pas gagner.";
+  if (m.castle) return mover==="w" ? "Vous mettez le roi à l'abri. La prudence est une forme de style." : "Je me retranche. On ne gagne pas en s'exposant.";
+  if (m.promo) return mover==="w" ? "Un pion devient dame. Patience récompensée." : "Je promeus. La fin de partie a ses droits.";
+  if (info.captured && info.capturedType === "q") return mover==="w" ? "La dame tombe. Le centre de gravité vient de basculer." : "Je prends la dame. Vous le ressentirez bientôt.";
+  if (info.captured) { const names={p:"un pion",n:"un cavalier",b:"un fou",r:"une tour",q:"une dame"}; return mover==="w" ? `Vous prenez ${names[info.capturedType]} — net.` : `Je prends ${names[info.capturedType]}. Comptez vos forces.`; }
+  if (info.check) return mover==="w" ? "Échec. Vous m'obligez à répondre." : "Échec — votre roi devra bouger.";
+  const center = ["d4","d5","e4","e5"].includes(sq(m.to[0], m.to[1]));
+  if (center) return mover==="w" ? "Vous occupez le centre. La bonne géométrie d'abord." : "J'occupe le centre. Tout part de là.";
+  if (m.t === "n") return mover==="w" ? "Un cavalier avance — le détour est parfois la ligne droite." : "Mon cavalier cherche l'angle.";
+  const quiet = mover==="w"
+    ? ["Coup posé. Je vous observe.","Discret. J'aime ça.","Vous construisez. Patience.","Rien de spectaculaire — et c'est juste."]
+    : ["Je développe, sans hâte.","Je place mes pièces. Le calme avant.","Une amélioration tranquille.","Je prépare le terrain."];
+  return quiet[(m.to[0]+m.to[1]+m.from[1]) % quiet.length];
+}
+
+/* ============================================================ */
+function BeauEchiquier() {
+  const [board, setBoard] = useState(initialBoard);
+  const [gstate, setGstate] = useState(initialState);
+  const [turn, setTurn] = useState("w");
+  const [selected, setSelected] = useState(null);
+  const [legalFor, setLegalFor] = useState([]);
+  const [lastMove, setLastMove] = useState(null);
+  const [line, setLine] = useState("Les blancs ouvrent. À vous — je vous regarde faire.");
+  const [status, setStatus] = useState("À vous");
+  const [thinking, setThinking] = useState(false);
+  const [over, setOver] = useState(false);
+  const [captured, setCaptured] = useState({ w: [], b: [] });
+  const [depth, setDepth] = useState(2); // conservé pour compat
+  const [level, setLevel] = useState("doux");
+  const [mode, setMode] = useState("solo"); // solo | duo
+  const [showRules, setShowRules] = useState(false);
+  const histRef = useRef([]);
+
+  const allLegal = useCallback((b, col, st) => legalMoves(b, col, st), []);
+
+  const finishAfterMove = useCallback((nb, ns, mover, m, capturedPiece) => {
+    const nextCol = opp(mover);
+    const next = allLegal(nb, nextCol, ns);
+    const check = inCheck(nb, nextCol);
+    const info = { check, mate: next.length===0&&check, stalemate: next.length===0&&!check, captured: !!capturedPiece, capturedType: capturedPiece?capturedPiece.t:null };
+    if (mode === "duo") {
+      const side = mover === "w" ? "Les blancs" : "Les noirs";
+      const names = { p:"un pion", n:"un cavalier", b:"un fou", r:"une tour", q:"une dame" };
+      let l = `${side} jouent.`;
+      if (info.mate) l = `Échec et mat. ${side} l'emportent.`;
+      else if (info.stalemate) l = "Pat. Partie nulle.";
+      else if (info.check) l = `Échec ! ${side} attaquent le roi.`;
+      else if (info.captured) l = `${side} prennent ${names[info.capturedType]}.`;
+      else if (m.castle) l = `${side} roquent.`;
+      else if (m.promo) l = `${side} promeuvent une dame.`;
+      setLine(l);
+      if (next.length === 0) { setOver(true); setStatus(check ? `Mat — ${mover==="w"?"blancs":"noirs"} gagnent` : "Pat — nulle"); }
+      else setStatus(check ? `Échec — aux ${nextCol==="w"?"blancs":"noirs"}` : `Aux ${nextCol==="w"?"blancs":"noirs"}`);
+      return;
+    }
+    setLine(souffleurLine(nb, ns, m, mover, info));
+    if (next.length === 0) { setOver(true); setStatus(check ? (mover==="w"?"Échec et mat — vous gagnez":"Échec et mat") : "Pat — partie nulle"); }
+    else setStatus(check ? (nextCol==="w"?"Échec — à vous":"Échec") : nextCol==="w"?"À vous":"Le Souffleur réfléchit");
+  }, [allLegal, mode]);
+
+  const pushHistory = useCallback(() => {
+    histRef.current.push({
+      board: cloneBoard(board),
+      gstate: { castling: { ...gstate.castling }, ep: gstate.ep ? [...gstate.ep] : null },
+      turn, lastMove, line, status, over, captured: { w: [...captured.w], b: [...captured.b] },
+    });
+  }, [board, gstate, turn, lastMove, line, status, over, captured]);
+
+  const commitMove = useCallback((m, mover) => {
+    pushHistory();
+    const { board: nb, state: ns, captured: cap } = applyMove(board, gstate, m);
+    setBoard(nb); setGstate(ns); setLastMove({ from: m.from, to: m.to });
+    if (cap) setCaptured((prev)=>({ ...prev, [mover]: [...prev[mover], cap.t] }));
+    finishAfterMove(nb, ns, mover, m, cap);
+    setTurn(opp(mover)); setSelected(null); setLegalFor([]);
+  }, [board, gstate, pushHistory, finishAfterMove]);
+
+  const onCell = (r, c) => {
+    if (over || thinking) return;
+    if (mode === "solo" && turn !== "w") return;
+    const me = turn;
+    const p = board[r][c];
+    if (selected) {
+      const mv = legalFor.find((m)=>m.to[0]===r&&m.to[1]===c);
+      if (mv) { commitMove(mv, me); return; }
+      if (p && p.c === me) { setSelected([r,c]); setLegalFor(allLegal(board, me, gstate).filter((m)=>m.from[0]===r&&m.from[1]===c)); return; }
+      setSelected(null); setLegalFor([]); return;
+    }
+    if (p && p.c === me) { setSelected([r,c]); setLegalFor(allLegal(board, me, gstate).filter((m)=>m.from[0]===r&&m.from[1]===c)); }
+  };
+
+  useEffect(() => {
+    if (mode !== "solo" || turn !== "b" || over) return;
+    setThinking(true);
+    const id = setTimeout(() => {
+      let m;
+      if (level === "doux") {
+        const moves = legalMoves(board, "b", gstate);
+        m = (Math.random() < 0.5 && moves.length)
+          ? moves[Math.floor(Math.random() * moves.length)]
+          : bestMove(board, "b", gstate, 1);
+      } else if (level === "vif") {
+        m = bestMove(board, "b", gstate, 3);
+      } else {
+        m = bestMove(board, "b", gstate, 2);
+      }
+      if (m) commitMove(m, "b");
+      setThinking(false);
+    }, 420);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [turn, over, mode]);
+
+  const newGame = () => {
+    histRef.current = [];
+    setBoard(initialBoard()); setGstate(initialState()); setTurn("w");
+    setSelected(null); setLegalFor([]); setLastMove(null); setOver(false); setThinking(false);
+    setCaptured({ w: [], b: [] });
+    if (mode === "duo") { setLine("Les blancs ouvrent."); setStatus("Aux blancs"); }
+    else { setLine("Les blancs ouvrent. À vous — je vous regarde faire."); setStatus("À vous"); }
+  };
+  const switchMode = (m) => {
+    setMode(m); histRef.current = [];
+    setBoard(initialBoard()); setGstate(initialState()); setTurn("w");
+    setSelected(null); setLegalFor([]); setLastMove(null); setOver(false); setThinking(false);
+    setCaptured({ w: [], b: [] });
+    if (m === "duo") { setLine("À deux : les blancs commencent."); setStatus("Aux blancs"); }
+    else { setLine("Vous jouez les blancs contre le Souffleur."); setStatus("À vous"); }
+  };
+  const undo = () => {
+    if (thinking) return;
+    const h = histRef.current; if (h.length === 0) return;
+    let snap;
+    if (h.length >= 2) { snap = h[h.length-2]; histRef.current = h.slice(0, h.length-2); }
+    else { snap = h[h.length-1]; histRef.current = []; }
+    setBoard(snap.board); setGstate(snap.gstate); setTurn(snap.turn); setLastMove(snap.lastMove);
+    setLine(snap.line); setStatus(snap.status); setOver(snap.over); setCaptured(snap.captured);
+    setSelected(null); setLegalFor([]);
+  };
+
+  const targetMove = (r, c) => legalFor.find((m)=>m.to[0]===r&&m.to[1]===c);
+  const isCapTarget = (r, c) => { const m = targetMove(r,c); return m && (board[r][c] || m.ep); };
+  const isMoveTarget = (r, c) => { const m = targetMove(r,c); return m && !(board[r][c] || m.ep); };
+  const isSel = (r, c) => selected && selected[0]===r && selected[1]===c;
+  const isLast = (r, c) => lastMove && ((lastMove.from[0]===r&&lastMove.from[1]===c)||(lastMove.to[0]===r&&lastMove.to[1]===c));
+
+  const capRow = (arr, army) => arr.length===0
+    ? <span style={{ opacity: 0.3, fontSize: 16 }}>—</span>
+    : arr.map((t,i)=>(<span key={i} style={{ width: 16, height: 16, display: "inline-flex" }}><Piece type={t} color={army} /></span>));
+
+  return (
+    <div style={S.page}>
+      <style>{CSS}</style>
+      <div style={S.shell}>
+        <header style={S.head}>
+          <div style={S.brand}>BEAU</div>
+          <div style={S.eyebrow}>LE SOUFFLEUR · ÉCHECS</div>
+          <div style={S.hairline} />
+        </header>
+
+        <div style={S.tray}>
+          <span style={S.trayLabel}>Le Souffleur</span>
+          <span style={S.trayCaps}>{capRow(captured.b, "w")}</span>
+        </div>
+
+        {/* ----- LE PLATEAU ----- */}
+        <div style={S.cabinet}>
+          <div style={S.frameInner}>
+            <div style={S.surfaceRow}>
+              <div style={S.ranks}>
+                {[8,7,6,5,4,3,2,1].map((n)=>(<span key={n} style={S.coord}>{n}</span>))}
+              </div>
+              <div style={S.surfaceCol}>
+                <div style={S.surface}>
+                  <div style={S.grid} role="grid" aria-label="Échiquier">
+                    {board.map((row, r) => row.map((p, c) => {
+                      const dark = (r + c) % 2 === 1;
+                      let boxShadow = "none";
+                      if (isSel(r, c)) boxShadow = `inset 0 0 0 3px ${C.terra}`;
+                      else if (isCapTarget(r, c)) boxShadow = `inset 0 0 0 3px ${C.terra}99`;
+                      else if (isLast(r, c)) boxShadow = `inset 0 0 0 2px ${C.terra}4D`;
+                      return (
+                        <button
+                          key={`${r}-${c}`}
+                          onClick={() => onCell(r, c)}
+                          className="cell"
+                          style={{
+                            ...S.cell,
+                            background: dark
+                              ? `linear-gradient(140deg, ${C.darkHi}, rgba(0,0,0,0.05)), ${C.dark}`
+                              : `linear-gradient(140deg, ${C.lightHi}, rgba(0,0,0,0.018)), ${C.light}`,
+                            boxShadow,
+                          }}
+                          aria-label={`${sq(r, c)}${p ? ` ${p.c==="w"?"vous":"souffleur"} ${p.t}` : ""}`}
+                        >
+                          {isMoveTarget(r, c) && <span style={{ ...S.ring }} />}
+                          {p && (
+                            <span style={S.pieceBox}><Piece type={p.t} color={p.c} /></span>
+                          )}
+                        </button>
+                      );
+                    }))}
+                  </div>
+                </div>
+                <div style={S.files}>
+                  {FILES.split("").map((f)=>(<span key={f} style={S.coord}>{f}</span>))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style={S.tray}>
+          <span style={S.trayLabel}>Vous</span>
+          <span style={S.trayCaps}>{capRow(captured.w, "b")}</span>
+        </div>
+
+        <div style={S.voice}>
+          <span style={S.voiceMark}>—</span>
+          <span style={S.voiceText}>{line}</span>
+        </div>
+
+        {showRules && (
+          <div style={S.rules}>
+            <b style={S.rulesH}>Les échecs en bref</b>
+            Chaque pièce se déplace à sa façon : le pion avance tout droit (et prend en diagonale), la tour en lignes, le fou en diagonales, la dame dans toutes les directions, le cavalier en « L », le roi d'une case. Le but : mettre le roi adverse en <i>échec et mat</i> — menacé et sans échappatoire. Touchez une pièce, les cases possibles s'affichent en points ; touchez la case d'arrivée. En mode <i>Souffleur</i> vous jouez les blancs (ivoire) ; en mode <i>À deux</i>, chacun joue son tour sur le même écran.
+          </div>
+        )}
+
+        <footer style={S.foot}>
+          <span style={{ ...S.status, color: thinking ? C.terra : C.muted }} className={thinking ? "pulse" : ""}>
+            {thinking ? "Le Souffleur réfléchit" : status}
+          </span>
+          <div style={S.controls}>
+            <div style={S.toggle}>
+              <button onClick={() => switchMode("solo")} style={{ ...S.toggleBtn, ...(mode==="solo"?S.toggleOn:{}) }}>Souffleur</button>
+              <button onClick={() => switchMode("duo")} style={{ ...S.toggleBtn, ...(mode==="duo"?S.toggleOn:{}) }}>À deux</button>
+            </div>
+            {mode === "solo" && (
+              <div style={S.toggle}>
+                <button onClick={() => setLevel("doux")} style={{ ...S.toggleBtn, ...(level==="doux"?S.toggleOn:{}) }}>Doux</button>
+                <button onClick={() => setLevel("pose")} style={{ ...S.toggleBtn, ...(level==="pose"?S.toggleOn:{}) }}>Posé</button>
+                <button onClick={() => setLevel("vif")} style={{ ...S.toggleBtn, ...(level==="vif"?S.toggleOn:{}) }}>Vif</button>
+              </div>
+            )}
+            <button onClick={() => setShowRules((v)=>!v)} style={S.ghost}>Règles</button>
+            <button onClick={undo} style={S.ghost} disabled={thinking || histRef.current.length===0}>Annuler</button>
+            <button onClick={newGame} style={S.solid}>Nouvelle partie</button>
+          </div>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- CSS ---------- */
+const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap');
+* { box-sizing: border-box; }
+.cell:focus-visible { outline: 3px solid ${C.terra}; outline-offset: -3px; z-index: 3; }
+.cell:hover { filter: brightness(1.015); }
+.pulse { animation: bpulse 1.6s ease-in-out infinite; }
+@keyframes bpulse { 0%,100% { opacity: .55 } 50% { opacity: 1 } }
+@media (prefers-reduced-motion: reduce) { .pulse { animation: none } }
+`;
+
+const COORD = {
+  fontFamily: "'Cormorant Garamond', Georgia, serif",
+  fontStyle: "italic",
+  fontSize: 13,
+  color: "rgba(32,30,25,0.5)",
+  lineHeight: 1,
+};
+
+const S = {
+  page: {
+    minHeight: "100vh",
+    background: `radial-gradient(120% 120% at 50% 0%, #F6F0E4 0%, ${C.bg} 60%)`,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    padding: "32px 16px",
+    fontFamily: "'Cormorant Garamond', Georgia, serif", color: C.ink,
+  },
+  shell: { width: "min(92vw, 540px)" },
+  head: { textAlign: "center", marginBottom: 16 },
+  brand: { fontFamily: "ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif", fontSize: 13, fontWeight: 600, letterSpacing: "0.42em", paddingLeft: "0.42em" },
+  eyebrow: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 10, letterSpacing: "0.28em", color: C.muted, marginTop: 7, paddingLeft: "0.28em" },
+  hairline: { height: 1, background: C.hair, margin: "15px auto 0", width: "100%" },
+
+  tray: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 2px", minHeight: 24 },
+  trayLabel: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 10, letterSpacing: "0.22em", textTransform: "uppercase", color: C.muted },
+  trayCaps: { display: "flex", gap: 1, alignItems: "center", minHeight: 18 },
+
+  /* le meuble : cadre marqueté surélevé */
+  cabinet: {
+    padding: 12,
+    background: `linear-gradient(150deg, #E6DBC5 0%, ${C.frame} 55%, ${C.frameEdge} 100%)`,
+    borderRadius: 5,
+    border: `1px solid ${C.frameEdge}`,
+    boxShadow: "0 1px 0 rgba(255,255,255,0.55) inset, 0 36px 64px -34px rgba(32,30,25,0.6), 0 4px 14px -8px rgba(32,30,25,0.35)",
+  },
+  /* liseré intérieur du cadre */
+  frameInner: {
+    padding: "10px 12px 8px",
+    borderRadius: 3,
+    background: "linear-gradient(180deg, rgba(255,255,255,0.18), rgba(0,0,0,0.04))",
+    boxShadow: `inset 0 0 0 1px rgba(255,255,255,0.35)`,
+  },
+  surfaceRow: { display: "flex", alignItems: "stretch", gap: 8 },
+  ranks: { display: "flex", flexDirection: "column", justifyContent: "space-around", alignItems: "center", width: 14 },
+  surfaceCol: { flex: 1, display: "flex", flexDirection: "column", gap: 6 },
+
+  /* la surface de jeu : encastrée, filet de marqueterie */
+  surface: {
+    padding: 3,
+    background: C.inlay,
+    borderRadius: 2,
+    boxShadow: "inset 0 2px 7px rgba(32,30,25,0.30), 0 0 0 1px rgba(32,30,25,0.18)",
+  },
+  grid: {
+    display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gridTemplateRows: "repeat(8, 1fr)",
+    width: "100%", aspectRatio: "1 / 1", overflow: "hidden", borderRadius: 1,
+  },
+  files: { display: "flex", justifyContent: "space-around", alignItems: "center", height: 14 },
+  coord: { ...COORD },
+
+  cell: {
+    position: "relative", border: "none", padding: 0, cursor: "pointer",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    fontFamily: "inherit", WebkitTapHighlightColor: "transparent",
+    transition: "filter 120ms ease",
+  },
+  pieceBox: {
+    width: "78%", height: "78%", display: "flex", alignItems: "center", justifyContent: "center",
+    pointerEvents: "none", zIndex: 2,
+  },
+  piece: {
+    fontSize: "min(8.4vw, 48px)", lineHeight: 1,
+    textShadow: "0 1px 1.5px rgba(32,30,25,0.22)",
+    userSelect: "none", pointerEvents: "none",
+  },
+  pieceWrap: { position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center", lineHeight: 1, pointerEvents: "none" },
+  pieceOverlay: { position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", textShadow: "none" },
+  ring: {
+    position: "absolute", width: "26%", height: "26%", borderRadius: "50%",
+    border: `2px solid ${C.dot}`, pointerEvents: "none",
+  },
+
+  voice: { marginTop: 14, display: "flex", gap: 10, alignItems: "baseline", padding: "14px 2px 4px", borderTop: `1px solid ${C.hair}` },
+  voiceMark: { color: C.terra, fontSize: 20, lineHeight: 1 },
+  voiceText: { fontStyle: "italic", fontSize: 19, lineHeight: 1.35, color: C.ink },
+  rules: { marginTop: 12, padding: "14px 16px", background: "rgba(174,90,63,0.06)", border: `1px solid ${C.hair}`, borderRadius: 4, fontSize: 16.5, lineHeight: 1.5, color: C.ink },
+  rulesH: { display: "block", fontSize: 18, marginBottom: 6 },
+
+  foot: { marginTop: 14, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" },
+  status: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 10.5, letterSpacing: "0.2em", textTransform: "uppercase" },
+  controls: { display: "flex", alignItems: "center", gap: 8 },
+  toggle: { display: "flex", border: `1px solid ${C.hair}`, borderRadius: 2, overflow: "hidden" },
+  toggleBtn: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", padding: "7px 12px", border: "none", background: "transparent", color: C.muted, cursor: "pointer" },
+  toggleOn: { background: C.ink, color: C.bg },
+  ghost: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", padding: "8px 14px", border: `1px solid ${C.hair}`, background: "transparent", color: C.ink, cursor: "pointer", borderRadius: 2 },
+  solid: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", padding: "8px 14px", border: "none", background: C.terra, color: "#FBF7EF", cursor: "pointer", borderRadius: 2 },
+};
+
+return BeauEchiquier;
+})();
+
+/* ==== Tawla ==== */
+const Tawla = (function(){
+const {useState,useEffect,useRef,useCallback,useMemo}=React;
+
+/* ============================================================
+   BEAU · LE SOUFFLEUR — Tawla (backgammon)
+   Vous = ivoire · le Souffleur = encre.
+   Dés, doubles, prises (barre + rentrée), sortie des pions,
+   IA pour le Souffleur, voix éditoriale.
+   Index 0..23 = points 1..24.
+   Vous (blanc) : 24→1, sortie en bas-droite (idx 0..5).
+   Souffleur (encre) : 1→24, sortie en haut-droite (idx 18..23).
+   ============================================================ */
+
+const C = {
+  bg: "#F1EADD",
+  frame: "#DCD0B8",
+  frameEdge: "#CDBE9F",
+  inlay: "#B07A4E",
+  triA: "#ECE3D0",        // triangle clair
+  triB: "#95A8A1",        // triangle pétrole
+  felt: "#E4DAC4",        // fond du plateau
+  ink: "#201E19",         // Souffleur
+  bone: "#F5EEDC",        // vous
+  terra: "#A8553B",       // accent
+  hair: "rgba(32,30,25,0.14)",
+  muted: "#6B6557",
+  ok: "rgba(168,85,59,0.55)",
+};
+
+/* ---------- État initial ---------- */
+function initialGame() {
+  const board = Array(24).fill(0); // + = vous (blanc), - = Souffleur (encre)
+  board[23] = 2;  board[12] = 5;  board[7] = 3;  board[5] = 5;     // blanc
+  board[0] = -2;  board[11] = -5; board[16] = -3; board[18] = -5;  // encre
+  return { board, bar: { w: 0, b: 0 }, off: { w: 0, b: 0 } };
+}
+const clone = (g) => ({ board: g.board.slice(), bar: { ...g.bar }, off: { ...g.off } });
+
+/* ---------- Règles ---------- */
+const entryIdx = (color, die) => (color === "w" ? 24 - die : die - 1);
+const canLand = (g, color, idx) => (color === "w" ? g.board[idx] >= -1 : g.board[idx] <= 1);
+
+function allHome(g, color) {
+  if (color === "w") {
+    if (g.bar.w > 0) return false;
+    for (let i = 6; i < 24; i++) if (g.board[i] > 0) return false;
+    return true;
+  } else {
+    if (g.bar.b > 0) return false;
+    for (let i = 0; i < 18; i++) if (g.board[i] < 0) return false;
+    return true;
+  }
+}
+const highestWhite = (g) => { for (let i = 23; i >= 0; i--) if (g.board[i] > 0) return i; return -1; };
+const lowestBlack  = (g) => { for (let i = 0; i < 24; i++) if (g.board[i] < 0) return i; return -1; };
+
+// Coup unique pour un pion depuis `from` (idx ou 'bar') avec le dé `die`
+function singleMove(g, color, from, die) {
+  if (from === "bar") {
+    const to = entryIdx(color, die);
+    if (canLand(g, color, to)) return { type: "enter", from, to, die };
+    return null;
+  }
+  if (color === "w") {
+    const t = from - die;
+    if (t >= 0) { if (canLand(g, "w", t)) return { type: "move", from, to: t, die }; return null; }
+    if (!allHome(g, "w")) return null;
+    if (t === -1) return { type: "bear", from, to: -1, die };
+    if (highestWhite(g) === from) return { type: "bear", from, to: -1, die }; // surpassement
+    return null;
+  } else {
+    const t = from + die;
+    if (t <= 23) { if (canLand(g, "b", t)) return { type: "move", from, to: t, die }; return null; }
+    if (!allHome(g, "b")) return null;
+    if (t === 24) return { type: "bear", from, to: 24, die };
+    if (lowestBlack(g) === from) return { type: "bear", from, to: 24, die };
+    return null;
+  }
+}
+
+function allLegalMoves(g, color, dice) {
+  const seen = new Set();
+  const dset = [...new Set(dice)];
+  const moves = [];
+  const push = (from) => {
+    for (const die of dset) {
+      const m = singleMove(g, color, from, die);
+      if (m) { const k = `${from}>${m.to}:${die}`; if (!seen.has(k)) { seen.add(k); moves.push(m); } }
+    }
+  };
+  if ((color === "w" ? g.bar.w : g.bar.b) > 0) { push("bar"); return moves; }
+  for (let i = 0; i < 24; i++) if (color === "w" ? g.board[i] > 0 : g.board[i] < 0) push(i);
+  return moves;
+}
+
+function applyMove(g, color, m) {
+  const ng = clone(g);
+  const sign = color === "w" ? 1 : -1;
+  if (m.from === "bar") ng.bar[color] -= 1;
+  else ng.board[m.from] -= sign;
+  let hit = false;
+  if (m.type === "bear") {
+    ng.off[color] += 1;
+  } else {
+    const to = m.to;
+    if (color === "w" && ng.board[to] === -1) { ng.board[to] = 0; ng.bar.b += 1; hit = true; }
+    if (color === "b" && ng.board[to] === 1) { ng.board[to] = 0; ng.bar.w += 1; hit = true; }
+    ng.board[to] += sign;
+  }
+  return { game: ng, hit };
+}
+
+function rollDice() {
+  const a = 1 + Math.floor(Math.random() * 6);
+  const b = 1 + Math.floor(Math.random() * 6);
+  return a === b ? [a, a, a, a] : [a, b];
+}
+
+/* ---------- IA du Souffleur ---------- */
+function aiSequence(g, dice) {
+  let work = clone(g);
+  let left = [...dice];
+  const seq = [];
+  while (left.length) {
+    const legal = allLegalMoves(work, "b", left);
+    if (legal.length === 0) break;
+    let best = null, bestScore = -Infinity;
+    for (const m of legal) {
+      let s = 0;
+      if (m.from === "bar") s += 200;
+      if (m.type === "bear") s += 120;
+      const to = m.to;
+      if (m.type === "move" || m.type === "enter") {
+        if (work.board[to] === 1) s += 70;                 // touche un blot blanc
+        if (work.board[to] <= -1) s += 30;                 // consolide un point
+        if (work.board[to] === 0) s -= 6;                  // laisse un blot
+        s += to * 0.6;                                     // progression vers la sortie
+      }
+      if (s > bestScore) { bestScore = s; best = m; }
+    }
+    const { game } = applyMove(work, "b", best);
+    work = game;
+    seq.push(best);
+    const di = left.indexOf(best.die);
+    left.splice(di, 1);
+  }
+  return seq;
+}
+
+/* ---------- Voix ---------- */
+function rollLine(dice, color) {
+  if (dice.length === 4) return color === "w" ? `Double ${dice[0]}. Quatre fois le même pas.` : `Double ${dice[0]} pour moi. Le sort est généreux.`;
+  return color === "w" ? `${dice[0]} et ${dice[1]}. À vous de tracer.` : `Je tire ${dice[0]} et ${dice[1]}.`;
+}
+
+/* ============================================================ */
+function BeauTawla() {
+  const [game, setGame] = useState(initialGame);
+  const [turn, setTurn] = useState("w");
+  const [dice, setDice] = useState([]);       // dés restants
+  const [shown, setShown] = useState([]);     // dés affichés (le tirage)
+  const [rolled, setRolled] = useState(false);
+  const [selected, setSelected] = useState(null);
+  const [targets, setTargets] = useState([]);
+  const [line, setLine] = useState("À vous d'ouvrir. Lancez les dés.");
+  const [status, setStatus] = useState("À vous — lancez");
+  const [over, setOver] = useState(false);
+  const [thinking, setThinking] = useState(false);
+  const [showRules, setShowRules] = useState(false);
+
+  const recomputeTargets = useCallback((g, sel, dl) => {
+    if (sel === null) return [];
+    const out = [];
+    for (const die of [...new Set(dl)]) {
+      const m = singleMove(g, "w", sel, die);
+      if (m) out.push(m);
+    }
+    return out;
+  }, []);
+
+  const endTurn = useCallback((g) => {
+    setSelected(null); setTargets([]);
+    if (g.off.w === 15) { setOver(true); setStatus("Tout est sorti — vous gagnez"); setLine("Tout est sorti. La partie est à vous."); return; }
+    if (g.off.b === 15) { setOver(true); setStatus("Tout est sorti — le Souffleur gagne"); setLine("Tout est sorti. À moi, cette fois."); return; }
+    setTurn((t) => (t === "w" ? "b" : "w"));
+    setDice([]); setShown([]); setRolled(false);
+  }, []);
+
+  /* --- tour du joueur --- */
+  const playerRoll = () => {
+    if (turn !== "w" || rolled || over) return;
+    const d = rollDice();
+    setShown(d); setDice(d); setRolled(true);
+    setLine(rollLine(d, "w"));
+    const legal = allLegalMoves(game, "w", d);
+    if (legal.length === 0) { setStatus("Aucun coup possible"); setLine("Rien à jouer — les portes sont fermées."); setTimeout(() => endTurn(game), 900); }
+    else setStatus("À vous de jouer");
+  };
+
+  const doPlayerMove = (m) => {
+    const { game: ng, hit } = applyMove(game, "w", m);
+    const ndice = dice.slice();
+    ndice.splice(ndice.indexOf(m.die), 1);
+    setGame(ng);
+    if (m.type === "bear") setLine("Un pion sort. La sortie est une discipline.");
+    else if (hit) setLine("Vous me touchez — mon pion file à la barre.");
+    setDice(ndice);
+    const legal = allLegalMoves(ng, "w", ndice);
+    if (ndice.length === 0 || legal.length === 0) { setTimeout(() => endTurn(ng), 260); }
+    else { setSelected(null); setTargets([]); }
+  };
+
+  const onPoint = (idx) => {
+    if (turn !== "w" || over || !rolled || thinking) return;
+    if (game.bar.w > 0 && selected !== "bar") return; // doit rentrer d'abord
+    if (selected === null || selected === "bar") {
+      if (game.board[idx] > 0) {
+        const t = recomputeTargets(game, idx, dice);
+        if (t.length) { setSelected(idx); setTargets(t); }
+      }
+      return;
+    }
+    const tgt = targets.find((t) => t.to === idx && (t.type === "move" || t.type === "enter"));
+    if (tgt) { doPlayerMove(tgt); return; }
+    if (game.board[idx] > 0) {
+      const t = recomputeTargets(game, idx, dice);
+      if (t.length) { setSelected(idx); setTargets(t); } else { setSelected(null); setTargets([]); }
+    } else { setSelected(null); setTargets([]); }
+  };
+
+  const onBar = () => {
+    if (turn !== "w" || over || !rolled || thinking || game.bar.w === 0) return;
+    const t = recomputeTargets(game, "bar", dice);
+    setSelected("bar"); setTargets(t);
+  };
+
+  const onOff = () => {
+    if (turn !== "w" || over || !rolled || thinking || selected === null) return;
+    const tgt = targets.find((t) => t.type === "bear");
+    if (tgt) doPlayerMove(tgt);
+  };
+
+  /* --- tour du Souffleur --- */
+  useEffect(() => {
+    if (turn !== "b" || over) return;
+    setThinking(true);
+    setStatus("Le Souffleur lance les dés");
+    const t0 = setTimeout(() => {
+      const d = rollDice();
+      setShown(d);
+      setLine(rollLine(d, "b"));
+      const seq = aiSequence(game, d);
+      if (seq.length === 0) { setTimeout(() => { setThinking(false); endTurn(game); }, 800); return; }
+      let work = clone(game);
+      let i = 0;
+      const step = () => {
+        if (i >= seq.length) { setThinking(false); endTurn(work); return; }
+        const m = seq[i++];
+        const { game: ng, hit } = applyMove(work, "b", m);
+        work = ng;
+        setGame(ng);
+        if (m.type === "bear") setLine("Je sors un pion. Méthodique.");
+        else if (hit) setLine("Je vous touche — votre pion repart de la barre.");
+        setTimeout(step, 620);
+      };
+      setTimeout(step, 520);
+    }, 560);
+    return () => clearTimeout(t0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [turn, over]);
+
+  const newGame = () => {
+    setGame(initialGame()); setTurn("w"); setDice([]); setShown([]); setRolled(false);
+    setSelected(null); setTargets([]); setOver(false); setThinking(false);
+    setLine("À vous d'ouvrir. Lancez les dés."); setStatus("À vous — lancez");
+  };
+
+  /* ---------- rendu ---------- */
+  const isTarget = (idx) => targets.some((t) => t.to === idx && (t.type === "move" || t.type === "enter"));
+  const canBear = targets.some((t) => t.type === "bear");
+
+  const Checkers = ({ count, color, dir }) => {
+    const n = Math.abs(count);
+    if (n === 0) return null;
+    const show = Math.min(n, 5);
+    const discs = [];
+    for (let i = 0; i < show; i++) {
+      const last = i === show - 1 && n > 5;
+      discs.push(
+        <span key={i} style={{ ...S.disc, ...(color === "w" ? S.discW : S.discB) }}>
+          {last && <span style={{ ...S.discNum, color: color === "w" ? C.ink : C.bone }}>{n}</span>}
+        </span>
+      );
+    }
+    return <span style={{ ...S.stack, flexDirection: dir === "top" ? "column" : "column-reverse" }}>{discs}</span>;
+  };
+
+  const Point = ({ idx, pos, colIndex }) => {
+    const v = game.board[idx];
+    const triLight = colIndex % 2 === 0;
+    const sel = selected === idx;
+    const tgt = isTarget(idx);
+    return (
+      <button onClick={() => onPoint(idx)} className="pt" style={S.point} aria-label={`point ${idx + 1}`}>
+        <span style={{
+          ...S.tri,
+          ...(pos === "top" ? S.triTop : S.triBot),
+          background: triLight ? C.triA : C.triB,
+          opacity: 0.96,
+        }} />
+        {tgt && <span style={{ ...S.tgtRing, ...(pos === "top" ? { top: 4 } : { bottom: 4 }) }} />}
+        {sel && <span style={S.selWash} />}
+        <Checkers count={v} color={v > 0 ? "w" : "b"} dir={pos} />
+      </button>
+    );
+  };
+
+  const Die = ({ n, tone }) => (
+    <span style={{ ...S.die, background: tone === "w" ? C.bone : C.ink }}>
+      {PIPS[n].map((on, i) => (
+        <span key={i} style={{ ...S.pip, background: on ? (tone === "w" ? C.ink : C.bone) : "transparent" }} />
+      ))}
+    </span>
+  );
+
+  const topLeft = [12, 13, 14, 15, 16, 17];
+  const topRight = [18, 19, 20, 21, 22, 23];
+  const botLeft = [11, 10, 9, 8, 7, 6];
+  const botRight = [5, 4, 3, 2, 1, 0];
+
+  const quadrant = (top, bot) => (
+    <div style={S.quad}>
+      <div style={S.row}>{top.map((idx, i) => <Point key={idx} idx={idx} pos="top" colIndex={i} />)}</div>
+      <div style={S.row}>{bot.map((idx, i) => <Point key={idx} idx={idx} pos="bot" colIndex={i} />)}</div>
+    </div>
+  );
+
+  return (
+    <div style={S.page}>
+      <style>{CSS}</style>
+      <div style={S.shell}>
+        <header style={S.head}>
+          <div style={S.brand}>BEAU</div>
+          <div style={S.eyebrow}>LE SOUFFLEUR · TAWLA</div>
+          <div style={S.hairline} />
+        </header>
+
+        {/* score sortie */}
+        <div style={S.tray}>
+          <span style={S.trayLabel}>Le Souffleur — sortis : {game.off.b}/15</span>
+          <span style={S.trayLabel}>Vous — sortis : {game.off.w}/15</span>
+        </div>
+
+        {/* plateau */}
+        <div style={S.cabinet}>
+          <div style={S.boardInner}>
+            {quadrant(topLeft, botLeft)}
+
+            {/* barre centrale */}
+            <button onClick={onBar} className="bar" style={S.bar} aria-label="barre">
+              <span style={{ ...S.barHalf, justifyContent: "flex-start" }}>
+                {Array.from({ length: Math.min(game.bar.b, 4) }).map((_, i) => (
+                  <span key={i} style={{ ...S.disc, ...S.discB }} />
+                ))}
+                {game.bar.b > 4 && <span style={{ ...S.discNum, color: C.bone }}>{game.bar.b}</span>}
+              </span>
+              <span style={{ ...S.barHalf, justifyContent: "flex-end" }}>
+                {game.bar.w > 4 && <span style={{ ...S.discNum, color: C.ink }}>{game.bar.w}</span>}
+                {Array.from({ length: Math.min(game.bar.w, 4) }).map((_, i) => (
+                  <span key={i} style={{ ...S.disc, ...S.discW, ...(selected === "bar" ? S.discSel : {}) }} />
+                ))}
+              </span>
+            </button>
+
+            {quadrant(topRight, botRight)}
+
+            {/* sortie */}
+            <button onClick={onOff} className="off" style={{ ...S.off, boxShadow: canBear ? `inset 0 0 0 2px ${C.terra}` : "none" }} aria-label="sortie">
+              <span style={S.offHalf}>
+                <span style={S.offCount}>{game.off.b}</span>
+              </span>
+              <span style={S.offHalf}>
+                <span style={{ ...S.offCount, color: C.muted }}>{game.off.w}</span>
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {/* dés + voix */}
+        <div style={S.diceRow}>
+          <div style={S.diceBox}>
+            {shown.length === 0
+              ? <span style={S.diceEmpty}>—</span>
+              : shown.map((n, i) => {
+                  const used = turn === "w" && rolled && !diceContains(dice, shown, i);
+                  return <span key={i} style={{ opacity: used ? 0.28 : 1 }}><Die n={n} tone={turn} /></span>;
+                })}
+          </div>
+          {turn === "w" && !rolled && !over && (
+            <button onClick={playerRoll} style={S.solid}>Lancer les dés</button>
+          )}
+        </div>
+
+        <div style={S.voice}>
+          <span style={S.voiceMark}>—</span>
+          <span style={S.voiceText}>{line}</span>
+        </div>
+
+        {showRules && (
+          <div style={S.rules}>
+            <b style={S.rulesH}>Le tawla en bref</b>
+            C'est une course : sortir vos 15 pions ivoire avant le Souffleur.
+            <div style={S.rulesList}>
+              <div>• Lancez les deux dés : chaque dé déplace un pion d'autant de cases. Un <i>double</i> donne quatre déplacements.</div>
+              <div>• Vos pions avancent toujours vers votre coin de sortie (en bas à droite) ; ceux du Souffleur vont à l'opposé.</div>
+              <div>• On peut poser un pion sur une case vide, sur une des siennes, ou sur une case où l'adversaire n'a qu'<i>un seul</i> pion — on le « touche » : il file à la barre, au centre.</div>
+              <div>• Un pion à la barre doit <i>rentrer</i> sur le plateau adverse avant tout autre coup.</div>
+              <div>• Quand vos 15 pions sont dans votre quart « maison » (les 6 derniers triangles), vous pouvez les <i>sortir</i> : touchez le bac de droite.</div>
+              <div>• Le premier à tout sortir gagne.</div>
+            </div>
+            Pour jouer : <i>Lancer les dés</i> → touchez un pion → les cases possibles s'entourent → touchez la case (ou le bac de sortie).
+          </div>
+        )}
+
+        <footer style={S.foot}>
+          <span style={{ ...S.status, color: thinking ? C.terra : C.muted }} className={thinking ? "pulse" : ""}>{status}</span>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => setShowRules((v)=>!v)} style={S.ghost}>Règles</button>
+            <button onClick={newGame} style={S.ghost}>Nouvelle partie</button>
+          </div>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+/* dés utilisés : un dé affiché est "consommé" s'il n'est plus dans `dice` (gère les doublons) */
+function diceContains(remaining, shown, index) {
+  const counts = {};
+  for (const d of remaining) counts[d] = (counts[d] || 0) + 1;
+  // reconstruit l'ordre d'affichage : marque present tant qu'il reste un exemplaire
+  const seenBefore = shown.slice(0, index).filter((x) => x === shown[index]).length;
+  return (counts[shown[index]] || 0) > seenBefore;
+}
+
+const PIPS = {
+  1: [0,0,0,0,1,0,0,0,0],
+  2: [1,0,0,0,0,0,0,0,1],
+  3: [1,0,0,0,1,0,0,0,1],
+  4: [1,0,1,0,0,0,1,0,1],
+  5: [1,0,1,0,1,0,1,0,1],
+  6: [1,0,1,1,0,1,1,0,1],
+};
+
+/* ---------- CSS ---------- */
+const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap');
+* { box-sizing: border-box; }
+.pt, .bar, .off { cursor: pointer; }
+.pt:focus-visible, .bar:focus-visible, .off:focus-visible { outline: 2px solid ${C.terra}; outline-offset: -2px; }
+.pulse { animation: bpulse 1.6s ease-in-out infinite; }
+@keyframes bpulse { 0%,100% { opacity: .55 } 50% { opacity: 1 } }
+@media (prefers-reduced-motion: reduce) { .pulse { animation: none } }
+`;
+
+const S = {
+  page: {
+    minHeight: "100vh",
+    background: `radial-gradient(120% 120% at 50% 0%, #F6F0E4 0%, ${C.bg} 60%)`,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    padding: "28px 14px", fontFamily: "'Cormorant Garamond', Georgia, serif", color: C.ink,
+  },
+  shell: { width: "min(94vw, 600px)" },
+  head: { textAlign: "center", marginBottom: 14 },
+  brand: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 13, fontWeight: 600, letterSpacing: "0.42em", paddingLeft: "0.42em" },
+  eyebrow: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 10, letterSpacing: "0.28em", color: C.muted, marginTop: 7, paddingLeft: "0.28em" },
+  hairline: { height: 1, background: C.hair, margin: "14px auto 0", width: "100%" },
+
+  tray: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 2px 8px" },
+  trayLabel: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: C.muted },
+
+  cabinet: {
+    padding: 11,
+    background: `linear-gradient(150deg, #E6DBC5 0%, ${C.frame} 55%, ${C.frameEdge} 100%)`,
+    borderRadius: 5, border: `1px solid ${C.frameEdge}`,
+    boxShadow: "0 1px 0 rgba(255,255,255,0.55) inset, 0 34px 60px -34px rgba(32,30,25,0.6)",
+  },
+  boardInner: {
+    display: "flex", alignItems: "stretch",
+    height: "min(70vw, 420px)",
+    background: C.felt, borderRadius: 3,
+    boxShadow: "inset 0 2px 8px rgba(32,30,25,0.28), inset 0 0 0 1px rgba(32,30,25,0.16)",
+    overflow: "hidden",
+  },
+  quad: { flex: 6, display: "flex", flexDirection: "column" },
+  row: { flex: 1, display: "flex" },
+  point: {
+    position: "relative", flex: 1, border: "none", background: "transparent", padding: 0,
+    display: "flex", alignItems: "stretch", justifyContent: "center",
+    WebkitTapHighlightColor: "transparent",
+  },
+  tri: { position: "absolute", left: "12%", width: "76%", zIndex: 0 },
+  triTop: { top: 0, height: "88%", clipPath: "polygon(0 0, 100% 0, 50% 100%)" },
+  triBot: { bottom: 0, height: "88%", clipPath: "polygon(50% 0, 0 100%, 100% 100%)" },
+
+  stack: { position: "relative", display: "flex", alignItems: "center", gap: 1, padding: "3px 0", zIndex: 2, width: "100%" },
+  disc: {
+    width: "min(7vw, 40px)", height: "min(7vw, 40px)", borderRadius: "50%", flexShrink: 0,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    boxShadow: "0 1px 2px rgba(32,30,25,0.35), inset 0 1px 1px rgba(255,255,255,0.25)",
+  },
+  discW: { background: `radial-gradient(circle at 35% 30%, #FFFDF6, ${C.bone})`, border: `1.5px solid ${C.ink}` },
+  discB: { background: `radial-gradient(circle at 35% 30%, #3A372F, ${C.ink})`, border: `1.5px solid rgba(0,0,0,0.4)` },
+  discSel: { boxShadow: `0 0 0 2px ${C.terra}, 0 1px 2px rgba(32,30,25,0.35)` },
+  discNum: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 11, fontWeight: 700 },
+
+  tgtRing: { position: "absolute", left: "50%", transform: "translateX(-50%)", width: "min(5vw,26px)", height: "min(5vw,26px)", borderRadius: "50%", border: `2px solid ${C.ok}`, zIndex: 3, pointerEvents: "none" },
+  selWash: { position: "absolute", inset: 0, background: "rgba(168,85,59,0.10)", zIndex: 1, pointerEvents: "none" },
+
+  bar: {
+    flex: 1.1, border: "none", padding: "6px 0", display: "flex", flexDirection: "column",
+    background: `linear-gradient(180deg, #CBBC9C, #BBAA86)`,
+    boxShadow: "inset 1px 0 0 rgba(32,30,25,0.18), inset -1px 0 0 rgba(32,30,25,0.18)",
+    alignItems: "center",
+  },
+  barHalf: { flex: 1, width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: 2 },
+
+  off: {
+    flex: 1.1, border: "none", marginLeft: 4, display: "flex", flexDirection: "column",
+    background: "rgba(32,30,25,0.06)", boxShadow: "inset 0 0 0 1px rgba(32,30,25,0.16)", borderRadius: 2,
+  },
+  offHalf: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center" },
+  offCount: { fontFamily: "'Cormorant Garamond', serif", fontSize: 22, fontStyle: "italic", color: C.ink },
+
+  diceRow: { display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 14, minHeight: 44, gap: 12 },
+  diceBox: { display: "flex", gap: 8, alignItems: "center" },
+  diceEmpty: { color: C.muted, fontStyle: "italic", fontSize: 20 },
+  die: {
+    width: 34, height: 34, borderRadius: 6, padding: 5,
+    display: "grid", gridTemplateColumns: "repeat(3,1fr)", gridTemplateRows: "repeat(3,1fr)", gap: 1,
+    boxShadow: "0 2px 4px rgba(32,30,25,0.3), inset 0 1px 1px rgba(255,255,255,0.25)",
+    border: "1px solid rgba(32,30,25,0.25)",
+  },
+  pip: { width: 6, height: 6, borderRadius: "50%", margin: "auto" },
+
+  voice: { marginTop: 12, display: "flex", gap: 10, alignItems: "baseline", padding: "13px 2px 4px", borderTop: `1px solid ${C.hair}` },
+  voiceMark: { color: C.terra, fontSize: 20, lineHeight: 1 },
+  voiceText: { fontStyle: "italic", fontSize: 19, lineHeight: 1.35, color: C.ink },
+  rules: { marginTop: 12, padding: "14px 16px", background: "rgba(168,85,59,0.06)", border: `1px solid ${C.hair}`, borderRadius: 4, fontSize: 16.5, lineHeight: 1.5, color: C.ink },
+  rulesH: { display: "block", fontSize: 18, marginBottom: 6 },
+  rulesList: { margin: "8px 0", display: "flex", flexDirection: "column", gap: 5 },
+
+  foot: { marginTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" },
+  status: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 10.5, letterSpacing: "0.2em", textTransform: "uppercase" },
+  ghost: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", padding: "8px 14px", border: `1px solid ${C.hair}`, background: "transparent", color: C.ink, cursor: "pointer", borderRadius: 2 },
+  solid: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", padding: "10px 18px", border: "none", background: C.terra, color: "#FBF7EF", cursor: "pointer", borderRadius: 2 },
+};
+
+return BeauTawla;
+})();
+
+/* ==== Sudoku ==== */
+const Sudoku = (function(){
+const {useState,useEffect,useRef,useCallback,useMemo}=React;
+
+/* ============================================================
+   BEAU · LE SOUFFLEUR — Sudoku
+   Génération à solution unique, mode notes, surlignage des
+   pairs et des conflits, trois niveaux, voix du Souffleur.
+   ============================================================ */
+
+const C = {
+  bg: "#F1EADD",
+  frame: "#DCD0B8",
+  frameEdge: "#CDBE9F",
+  cell: "#F3ECDB",
+  boxTint: "rgba(149,168,161,0.16)",   // pétrole très pâle
+  ink: "#201E19",
+  terra: "#A8553B",
+  red: "#B8473A",
+  hair: "rgba(32,30,25,0.16)",
+  line: "rgba(32,30,25,0.55)",
+  muted: "#6B6557",
+  sel: "rgba(168,85,59,0.18)",
+  peer: "rgba(32,30,25,0.055)",
+  same: "rgba(168,85,59,0.10)",
+};
+
+const LEVELS = { doux: 44, pose: 34, vif: 28 };
+
+/* ---------- Générateur ---------- */
+const rc = (i) => [Math.floor(i / 9), i % 9];
+function valid(g, idx, v) {
+  const [r, c] = rc(idx);
+  for (let k = 0; k < 9; k++) {
+    if (g[r * 9 + k] === v) return false;
+    if (g[k * 9 + c] === v) return false;
+  }
+  const br = Math.floor(r / 3) * 3, bc = Math.floor(c / 3) * 3;
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) if (g[(br + i) * 9 + (bc + j)] === v) return false;
+  return true;
+}
+const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+
+function fillGrid(g) {
+  const idx = g.indexOf(0);
+  if (idx === -1) return true;
+  for (const v of shuffle([1, 2, 3, 4, 5, 6, 7, 8, 9])) {
+    if (valid(g, idx, v)) { g[idx] = v; if (fillGrid(g)) return true; g[idx] = 0; }
+  }
+  return false;
+}
+function countSolutions(grid, limit) {
+  const g = grid.slice();
+  let count = 0;
+  (function bt() {
+    if (count >= limit) return;
+    const idx = g.indexOf(0);
+    if (idx === -1) { count++; return; }
+    for (let v = 1; v <= 9; v++) {
+      if (valid(g, idx, v)) { g[idx] = v; bt(); g[idx] = 0; if (count >= limit) return; }
+    }
+  })();
+  return count;
+}
+function generate(clues) {
+  const full = Array(81).fill(0);
+  fillGrid(full);
+  const puzzle = full.slice();
+  const order = shuffle([...Array(81).keys()]);
+  let givens = 81;
+  for (const idx of order) {
+    if (givens <= clues) break;
+    const backup = puzzle[idx];
+    puzzle[idx] = 0;
+    if (countSolutions(puzzle, 2) !== 1) puzzle[idx] = backup;
+    else givens--;
+  }
+  return { puzzle, solution: full };
+}
+
+/* ============================================================ */
+function BeauSudoku() {
+  const [puzzle, setPuzzle] = useState(null);
+  const [solution, setSolution] = useState(null);
+  const [cells, setCells] = useState(Array(81).fill(0));
+  const [notes, setNotes] = useState(Array(81).fill(null).map(() => []));
+  const [selected, setSelected] = useState(null);
+  const [notesMode, setNotesMode] = useState(false);
+  const [level, setLevel] = useState("doux");
+  const [loading, setLoading] = useState(true);
+  const [won, setWon] = useState(false);
+  const [line, setLine] = useState("Neuf chiffres, neuf certitudes par ligne. À vous de les ranger.");
+  const boardRef = useRef(null);
+
+  const newGame = useCallback((lvl) => {
+    setLoading(true); setWon(false); setSelected(null);
+    setLine("Le Souffleur trace la grille…");
+    setTimeout(() => {
+      const { puzzle: pz, solution: sol } = generate(LEVELS[lvl]);
+      setPuzzle(pz); setSolution(sol);
+      setCells(pz.slice());
+      setNotes(Array(81).fill(null).map(() => []));
+      setLoading(false);
+      setLine("Neuf chiffres, neuf certitudes par ligne. À vous de les ranger.");
+    }, 30);
+  }, []);
+
+  useEffect(() => { newGame(level); /* eslint-disable-next-line */ }, []);
+
+  const given = (i) => puzzle && puzzle[i] !== 0;
+
+  // conflits : indices dont la valeur se répète dans la ligne/colonne/bloc
+  const conflicts = (() => {
+    const set = new Set();
+    if (!cells) return set;
+    for (let i = 0; i < 81; i++) {
+      const v = cells[i]; if (!v) continue;
+      const [r, c] = rc(i);
+      for (let k = 0; k < 9; k++) {
+        const ri = r * 9 + k, ci = k * 9 + c;
+        if (ri !== i && cells[ri] === v) { set.add(i); set.add(ri); }
+        if (ci !== i && cells[ci] === v) { set.add(i); set.add(ci); }
+      }
+      const br = Math.floor(r / 3) * 3, bc = Math.floor(c / 3) * 3;
+      for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) {
+        const j = (br + a) * 9 + (bc + b);
+        if (j !== i && cells[j] === v) { set.add(i); set.add(j); }
+      }
+    }
+    return set;
+  })();
+
+  const checkWin = useCallback((next) => {
+    if (!solution) return;
+    for (let i = 0; i < 81; i++) if (next[i] !== solution[i]) return;
+    setWon(true); setLine("Grille close. Tout est exactement à sa place.");
+  }, [solution]);
+
+  const place = useCallback((v) => {
+    if (selected == null || given(selected) || won) return;
+    if (notesMode && v !== 0) {
+      setNotes((prev) => {
+        const n = prev.map((x) => x.slice());
+        const arr = n[selected];
+        const k = arr.indexOf(v);
+        if (k >= 0) arr.splice(k, 1); else arr.push(v);
+        return n;
+      });
+      setCells((prev) => { const c = prev.slice(); c[selected] = 0; return c; });
+      return;
+    }
+    setCells((prev) => {
+      const c = prev.slice(); c[selected] = v; return c;
+    });
+    setNotes((prev) => { const n = prev.map((x) => x.slice()); n[selected] = []; return n; });
+    if (v !== 0) {
+      const next = cells.slice(); next[selected] = v;
+      if (solution && v !== solution[selected]) setLine("Un doublon se glisse — quelque part, deux fois le même.");
+      else { checkWin(next); }
+    }
+    // eslint-disable-next-line
+  }, [selected, notesMode, won, cells, solution, puzzle, checkWin]);
+
+  const hint = () => {
+    if (won || !solution) return;
+    let idx = selected;
+    if (idx == null || given(idx) || cells[idx] === solution[idx]) {
+      const empties = [];
+      for (let i = 0; i < 81; i++) if (!given(i) && cells[i] !== solution[i]) empties.push(i);
+      if (empties.length === 0) return;
+      idx = empties[Math.floor(Math.random() * empties.length)];
+    }
+    setSelected(idx);
+    setCells((prev) => { const c = prev.slice(); c[idx] = solution[idx]; return c; });
+    setNotes((prev) => { const n = prev.map((x) => x.slice()); n[idx] = []; return n; });
+    setLine("Je vous en pose un. Le reste vous appartient.");
+    const next = cells.slice(); next[idx] = solution[idx]; checkWin(next);
+  };
+
+  // clavier
+  useEffect(() => {
+    const onKey = (e) => {
+      if (selected == null) return;
+      if (e.key >= "1" && e.key <= "9") { place(parseInt(e.key, 10)); e.preventDefault(); }
+      else if (e.key === "Backspace" || e.key === "Delete" || e.key === "0") { place(0); e.preventDefault(); }
+      else if (e.key.startsWith("Arrow")) {
+        let [r, c] = rc(selected);
+        if (e.key === "ArrowUp") r = (r + 8) % 9;
+        if (e.key === "ArrowDown") r = (r + 1) % 9;
+        if (e.key === "ArrowLeft") c = (c + 8) % 9;
+        if (e.key === "ArrowRight") c = (c + 1) % 9;
+        setSelected(r * 9 + c); e.preventDefault();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selected, place]);
+
+  // décompte par chiffre (pour griser ceux placés 9 fois)
+  const counts = Array(10).fill(0);
+  for (const v of cells) if (v) counts[v]++;
+
+  const selVal = selected != null ? cells[selected] : 0;
+  const selRC = selected != null ? rc(selected) : null;
+  const isPeer = (i) => {
+    if (!selRC) return false;
+    const [r, c] = rc(i), [sr, sc] = selRC;
+    return r === sr || c === sc || (Math.floor(r / 3) === Math.floor(sr / 3) && Math.floor(c / 3) === Math.floor(sc / 3));
+  };
+
+  return (
+    <div style={S.page}>
+      <style>{CSS}</style>
+      <div style={S.shell}>
+        <header style={S.head}>
+          <div style={S.brand}>BEAU</div>
+          <div style={S.eyebrow}>LE SOUFFLEUR · SUDOKU</div>
+          <div style={S.hairline} />
+        </header>
+
+        <div style={S.cabinet}>
+          <div style={S.boardWrap} ref={boardRef}>
+            {loading && <div style={S.loading}>Le Souffleur trace la grille…</div>}
+            <div style={{ ...S.grid, opacity: loading ? 0.25 : 1 }}>
+              {cells.map((v, i) => {
+                const [r, c] = rc(i);
+                const box = (Math.floor(r / 3) + Math.floor(c / 3)) % 2 === 0;
+                const isSel = selected === i;
+                const sameNum = selVal && v === selVal && !isSel;
+                const conflict = conflicts.has(i);
+                let bg = box ? C.boxTint : "transparent";
+                if (isPeer(i) && !isSel) bg = C.peer;
+                if (sameNum) bg = C.same;
+                if (isSel) bg = C.sel;
+                return (
+                  <button
+                    key={i}
+                    onClick={() => setSelected(i)}
+                    style={{
+                      ...S.cell,
+                      background: bg,
+                      borderRight: c < 8 ? (c % 3 === 2 ? `2px solid ${C.line}` : `1px solid ${C.hair}`) : "none",
+                      borderBottom: r < 8 ? (r % 3 === 2 ? `2px solid ${C.line}` : `1px solid ${C.hair}`) : "none",
+                      boxShadow: isSel ? `inset 0 0 0 2px ${C.terra}` : "none",
+                    }}
+                  >
+                    {v !== 0 ? (
+                      <span style={{
+                        ...S.num,
+                        color: conflict ? C.red : given(i) ? C.ink : C.terra,
+                        fontWeight: given(i) ? 600 : 500,
+                      }}>{v}</span>
+                    ) : (
+                      notes[i] && notes[i].length > 0 && (
+                        <span style={S.notes}>
+                          {[1,2,3,4,5,6,7,8,9].map((n) => (
+                            <span key={n} style={{ ...S.note, visibility: notes[i].includes(n) ? "visible" : "hidden" }}>{n}</span>
+                          ))}
+                        </span>
+                      )
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* pavé numérique */}
+        <div style={S.pad}>
+          {[1,2,3,4,5,6,7,8,9].map((n) => (
+            <button key={n} onClick={() => place(n)} disabled={counts[n] >= 9}
+              style={{ ...S.padBtn, opacity: counts[n] >= 9 ? 0.3 : 1 }}>{n}</button>
+          ))}
+        </div>
+
+        <div style={S.actions}>
+          <button onClick={() => setNotesMode((m) => !m)} style={{ ...S.action, ...(notesMode ? S.actionOn : {}) }}>
+            Notes{notesMode ? " ·" : ""}
+          </button>
+          <button onClick={() => place(0)} style={S.action}>Effacer</button>
+          <button onClick={hint} style={S.action}>Indice</button>
+        </div>
+
+        <div style={S.voice}>
+          <span style={S.voiceMark}>—</span>
+          <span style={S.voiceText}>{line}</span>
+        </div>
+
+        <footer style={S.foot}>
+          <div style={S.toggle}>
+            <button onClick={() => { setLevel("doux"); newGame("doux"); }} style={{ ...S.toggleBtn, ...(level==="doux"?S.toggleOn:{}) }}>Doux</button>
+            <button onClick={() => { setLevel("pose"); newGame("pose"); }} style={{ ...S.toggleBtn, ...(level==="pose"?S.toggleOn:{}) }}>Posé</button>
+            <button onClick={() => { setLevel("vif"); newGame("vif"); }} style={{ ...S.toggleBtn, ...(level==="vif"?S.toggleOn:{}) }}>Vif</button>
+          </div>
+          <button onClick={() => newGame(level)} style={S.solid}>Nouvelle grille</button>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap');
+* { box-sizing: border-box; }
+button { font-family: inherit; }
+.sd:focus-visible { outline: 2px solid ${C.terra}; outline-offset: -2px; }
+`;
+
+const S = {
+  page: {
+    minHeight: "100vh",
+    background: `radial-gradient(120% 120% at 50% 0%, #F6F0E4 0%, ${C.bg} 60%)`,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    padding: "28px 14px", fontFamily: "'Cormorant Garamond', Georgia, serif", color: C.ink,
+  },
+  shell: { width: "min(94vw, 470px)" },
+  head: { textAlign: "center", marginBottom: 14 },
+  brand: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 13, fontWeight: 600, letterSpacing: "0.42em", paddingLeft: "0.42em" },
+  eyebrow: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 10, letterSpacing: "0.28em", color: C.muted, marginTop: 7, paddingLeft: "0.28em" },
+  hairline: { height: 1, background: C.hair, margin: "14px auto 0", width: "100%" },
+
+  cabinet: {
+    padding: 11,
+    background: `linear-gradient(150deg, #E6DBC5 0%, ${C.frame} 55%, ${C.frameEdge} 100%)`,
+    borderRadius: 5, border: `1px solid ${C.frameEdge}`,
+    boxShadow: "0 1px 0 rgba(255,255,255,0.55) inset, 0 30px 56px -34px rgba(32,30,25,0.55)",
+  },
+  boardWrap: { position: "relative", background: C.cell, border: `2px solid ${C.line}`, borderRadius: 2, overflow: "hidden" },
+  loading: {
+    position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center",
+    fontStyle: "italic", fontSize: 17, color: C.muted, zIndex: 5,
+  },
+  grid: { display: "grid", gridTemplateColumns: "repeat(9, 1fr)", aspectRatio: "1 / 1", width: "100%" },
+  cell: {
+    position: "relative", border: "none", padding: 0, cursor: "pointer",
+    display: "flex", alignItems: "center", justifyContent: "center", background: "transparent",
+    WebkitTapHighlightColor: "transparent",
+  },
+  num: { fontSize: "min(6.4vw, 27px)", lineHeight: 1, userSelect: "none" },
+  notes: {
+    display: "grid", gridTemplateColumns: "repeat(3,1fr)", gridTemplateRows: "repeat(3,1fr)",
+    width: "100%", height: "100%", padding: "8%",
+  },
+  note: { fontSize: "min(2.4vw, 10px)", color: C.muted, display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 },
+
+  pad: { marginTop: 14, display: "grid", gridTemplateColumns: "repeat(9, 1fr)", gap: 5 },
+  padBtn: {
+    aspectRatio: "1 / 1", border: `1px solid ${C.hair}`, borderRadius: 3, background: "#FBF6EA",
+    color: C.ink, fontFamily: "'Cormorant Garamond', serif", fontSize: "min(5.2vw, 22px)", cursor: "pointer",
+    boxShadow: "0 1px 0 rgba(255,255,255,0.6) inset",
+  },
+
+  actions: { marginTop: 9, display: "flex", gap: 8, justifyContent: "center" },
+  action: {
+    flex: 1, fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 10, letterSpacing: "0.14em",
+    textTransform: "uppercase", padding: "10px 8px", border: `1px solid ${C.hair}`, borderRadius: 2,
+    background: "transparent", color: C.ink, cursor: "pointer",
+  },
+  actionOn: { background: C.ink, color: C.bg, borderColor: C.ink },
+
+  voice: { marginTop: 14, display: "flex", gap: 10, alignItems: "baseline", padding: "13px 2px 4px", borderTop: `1px solid ${C.hair}` },
+  voiceMark: { color: C.terra, fontSize: 20, lineHeight: 1 },
+  voiceText: { fontStyle: "italic", fontSize: 18, lineHeight: 1.35, color: C.ink },
+
+  foot: { marginTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" },
+  toggle: { display: "flex", border: `1px solid ${C.hair}`, borderRadius: 2, overflow: "hidden" },
+  toggleBtn: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", padding: "7px 11px", border: "none", background: "transparent", color: C.muted, cursor: "pointer" },
+  toggleOn: { background: C.ink, color: C.bg },
+  solid: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", padding: "9px 16px", border: "none", background: C.terra, color: "#FBF7EF", cursor: "pointer", borderRadius: 2 },
+};
+
+return BeauSudoku;
+})();
+
+/* ==== Escales ==== */
+const Escales = (function(){
+const {useState,useEffect,useRef,useCallback,useMemo}=React;
+
+/* ============================================================
+   BEAU · LE SOUFFLEUR — « Escales » · MULTIJOUEUR (hot-seat)
+   Horloge commune : 1 jour = 1 seconde, les jours défilent.
+   Un navire parti pour N jours reste EN MER et n'accoste qu'au
+   jour de retour ; les autres compagnies jouent entre-temps.
+   Recréation libre de Ports of Call. Code & dessins originaux.
+   ============================================================ */
+
+const C = {
+  bg: "#F1EADD", paper: "#F4EEDF", sea: "#E7E0CD",
+  frame: "#DCD0B8", frameEdge: "#CDBE9F",
+  ink: "#201E19", terra: "#A8553B", petrol: "#7C938C",
+  hair: "rgba(32,30,25,0.14)", line: "rgba(32,30,25,0.30)",
+  muted: "#6B6557", good: "#5E7D5A", warn: "#B98A3E", bad: "#B8473A", panel: "#FBF6EA",
+};
+const COLORS = [
+  { key: "ink", hex: "#28251E", name: "Encre" },
+  { key: "terra", hex: "#A8553B", name: "Terre" },
+  { key: "petrol", hex: "#4E6E78", name: "Pétrole" },
+  { key: "olive", hex: "#6E7A4F", name: "Olive" },
+];
+
+const PORTS = [
+  { id: "sfo", name: "San Francisco", lat: 37.77, lon: -122.42 },
+  { id: "nyc", name: "New York", lat: 40.7, lon: -74.0 },
+  { id: "rio", name: "Rio de Janeiro", lat: -22.9, lon: -43.2 },
+  { id: "cpt", name: "Le Cap", lat: -33.92, lon: 18.42 },
+  { id: "rtm", name: "Rotterdam", lat: 51.9, lon: 4.5 },
+  { id: "dxb", name: "Dubaï", lat: 25.27, lon: 55.3 },
+  { id: "sin", name: "Singapour", lat: 1.35, lon: 103.8 },
+  { id: "yok", name: "Yokohama", lat: 35.44, lon: 139.64 },
+  { id: "syd", name: "Sydney", lat: -33.87, lon: 151.2 },
+];
+const portById = (id) => PORTS.find((p) => p.id === id);
+const SHIPS = [
+  { id: "coaster", name: "Caboteur", cap: 4, speed: 14, price: 850000, upkeep: 4000 },
+  { id: "freighter", name: "Cargo", cap: 9, speed: 16, price: 2300000, upkeep: 7000 },
+  { id: "bulk", name: "Vraquier", cap: 18, speed: 14, price: 4600000, upkeep: 11000 },
+  { id: "liner", name: "Porte-conteneurs", cap: 14, speed: 22, price: 6800000, upkeep: 14000 },
+];
+const shipSpec = (id) => SHIPS.find((s) => s.id === id);
+const CARGOS = ["Conteneurs", "Céréales", "Pétrole brut", "Automobiles", "Machines", "Textile", "Électronique", "Bois", "Charbon", "Café"];
+
+const R_NM = 3440;
+function distanceNm(a, b) {
+  const toR = (d) => (d * Math.PI) / 180;
+  const dLat = toR(b.lat - a.lat), dLon = toR(b.lon - a.lon);
+  const s = Math.sin(dLat / 2) ** 2 + Math.cos(toR(a.lat)) * Math.cos(toR(b.lat)) * Math.sin(dLon / 2) ** 2;
+  return Math.round(2 * R_NM * Math.asin(Math.sqrt(s)));
+}
+const proj = (p) => ({ x: p.lon + 180, y: 90 - p.lat });
+const rnd = (a, b) => a + Math.random() * (b - a);
+const ri = (a, b) => Math.floor(rnd(a, b + 1));
+const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+const money = (n) => (n < 0 ? "−" : "") + "$" + Math.abs(Math.round(n)).toLocaleString("fr-FR");
+
+function makeFreights(fromId, shipCap) {
+  const from = portById(fromId);
+  const others = PORTS.filter((p) => p.id !== fromId);
+  const n = ri(4, 5);
+  const list = [];
+  for (let i = 0; i < n; i++) {
+    const to = pick(others);
+    const dist = distanceNm(from, to);
+    const cargo = pick(CARGOS);
+    const volume = ri(2, Math.max(3, shipCap));
+    const rate = rnd(7, 13);
+    const pay = Math.round(volume * dist * rate);
+    const baseDays = Math.max(2, Math.round(dist / (16 * 24)));
+    const deadline = Math.max(baseDays + 1, Math.round(baseDays * rnd(1.35, 1.9)));
+    list.push({ to: to.id, cargo, volume, pay, dist, deadline });
+  }
+  return list;
+}
+function computeVoyage(fromId, toId, shipId) {
+  const from = portById(fromId), to = portById(toId), spec = shipSpec(shipId);
+  const dist = distanceNm(from, to);
+  let beaufort = ri(2, 7);
+  if (Math.random() < 0.22) beaufort = ri(8, 11);
+  let days = Math.max(2, Math.round(dist / (spec.speed * 24)));
+  let extraDays = 0, stormWear = 0, runExtra = 0, event = null;
+  if (beaufort >= 8) { extraDays = ri(1, 3); stormWear = ri(8, 16); event = "storm"; }
+  else if (Math.random() < 0.18) event = pick(["engine", "calm", "rescue", "pirates"]);
+  if (event === "engine") { extraDays += ri(1, 2); runExtra += 40000; }
+  if (event === "pirates") { runExtra += ri(30000, 90000); stormWear += ri(2, 6); }
+  const totalDays = days + extraDays;
+  const baseWear = Math.round(days * 0.4 + 3);
+  const runCost = spec.upkeep * totalDays + runExtra;
+  return { dist, beaufort, days, extraDays, totalDays, event, baseWear, stormWear, runCost };
+}
+const EVENT_TEXT = {
+  storm: { t: "Tempête", d: "Le baromètre s'effondre. La coque encaisse, on perd du temps." },
+  engine: { t: "Avarie machine", d: "La salle des machines tousse. Réparation de fortune, jours perdus." },
+  calm: { t: "Mer d'huile", d: "Calme plat. Traversée sereine, l'équipage souffle." },
+  rescue: { t: "Sauvetage", d: "Un radeau à la dérive — on récupère les naufragés. L'honneur de la mer." },
+  pirates: { t: "Pirates", d: "Une vedette suspecte nous serre. On s'en tire, mais cela coûte." },
+};
+
+const TARGET = 18000000;
+const SEASON_DAYS = 365;     // une saison = un an ; le jeu suit l'horloge
+const START_CASH = 2500000;
+
+/* ============================================================ */
+function BeauEscalesMulti() {
+  const [phase, setPhase] = useState("lobby");
+  const [nPlayers, setNPlayers] = useState(2);
+  const [players, setPlayers] = useState([]);
+  const [setupIdx, setSetupIdx] = useState(0);
+  const [draftName, setDraftName] = useState("");
+  const [draftPort, setDraftPort] = useState(null);
+  const [current, setCurrent] = useState(0);
+  const [clock, setClock] = useState(1);
+  const [pending, setPending] = useState({ who: 0, kind: "port" });
+  const [sailTarget, setSailTarget] = useState(1);
+  const [arrival, setArrival] = useState(null);
+  const [line, setLine] = useState("Combien de compagnies prennent la mer ?");
+  const [winner, setWinner] = useState(null);
+
+  const playersRef = useRef(players); useEffect(() => { playersRef.current = players; });
+  const clockRef = useRef(clock); useEffect(() => { clockRef.current = clock; });
+  const sailNextRef = useRef({ who: 0, kind: "port" });
+  const prevActor = useRef(null);
+  const navigating = useRef(false);
+
+  const P = players[current];
+  const spec = P && P.ship ? shipSpec(P.ship.id) : null;
+  const resale = (sh) => Math.round(shipSpec(sh.id).price * (0.5 + 0.4 * sh.hull / 100));
+  const netWorth = (pl) => pl.cash + (pl.ship ? resale(pl.ship) : 0);
+
+  const shipPosOf = (p) => {
+    if (p.status === "sea" && p.voyage) {
+      const a = proj(portById(p.voyage.departPort)), b = proj(portById(p.voyage.toPort));
+      const k = Math.max(0, Math.min(1, (clock - p.voyage.departDay) / Math.max(1, p.voyage.arriveDay - p.voyage.departDay)));
+      return { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k };
+    }
+    return proj(portById(p.port));
+  };
+
+  /* ---- planification événementielle (calendrier) ---- */
+  const endSeason = (ps) => {
+    const w = [...ps].sort((a, b) => netWorth(b) - netWorth(a))[0];
+    setWinner(w); setPhase("over"); setLine(`Fin de saison. ${w.name} l'emporte aux points.`);
+  };
+  const beginPending = (who, kind) => {
+    prevActor.current = who;
+    setCurrent(who);
+    if (kind === "arrive") { setPhase("docking"); setLine("Votre navire entre au port. Coupez les gaz dans la zone."); }
+    else { setPhase("turn"); setLine("En port. Choisissez votre fret."); }
+  };
+  const triggerEvent = (ps, who, kind, day) => {
+    setClock(day);
+    setPending({ who, kind });
+    if (prevActor.current === who) beginPending(who, kind);
+    else {
+      setPhase("pass");
+      setLine(kind === "arrive" ? "Un navire entre au port. Passez l'appareil à son armateur." : "Un navire est libre. Passez l'appareil.");
+    }
+  };
+  const schedule = (ps) => {
+    let best = Infinity, who = -1, kind = null;
+    ps.forEach((p, i) => {
+      const key = p.status === "sea" ? p.voyage.arriveDay : p.readyDay;
+      if (key < best) { best = key; who = i; kind = p.status === "sea" ? "arrive" : "port"; }
+    });
+    if (best > SEASON_DAYS) { endSeason(ps); return; }
+    if (clockRef.current < best) {
+      sailNextRef.current = { who, kind };
+      navigating.current = true;
+      setSailTarget(best); setPhase("sailing");
+      setLine("Les navires font route. Les jours défilent…");
+    } else {
+      triggerEvent(ps, who, kind, best);
+    }
+  };
+
+  const finishSail = () => {
+    if (!navigating.current) return;
+    navigating.current = false;
+    const sn = sailNextRef.current;
+    triggerEvent(playersRef.current, sn.who, sn.kind, sailTarget);
+  };
+  const skipSail = () => { setClock(sailTarget); finishSail(); };
+
+  /* horloge : 1 jour / seconde */
+  useEffect(() => {
+    if (phase !== "sailing") return;
+    const id = setInterval(() => {
+      setClock((prev) => {
+        const next = prev + 1;
+        if (next >= sailTarget) { clearInterval(id); setTimeout(finishSail, 20); return sailTarget; }
+        return next;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line
+  }, [phase, sailTarget]);
+
+  /* ---- lobby / setup ---- */
+  const startSetup = (n) => {
+    setNPlayers(n);
+    setPlayers(Array.from({ length: n }, (_, i) => ({ color: COLORS[i], name: "", port: null, cash: START_CASH, status: "port", readyDay: 1, voyage: null, ship: null, freights: [] })));
+    setSetupIdx(0); setDraftName(`Compagnie ${COLORS[0].name}`); setDraftPort(null);
+    prevActor.current = null;
+    setPhase("setup"); setLine("Compagnie 1 : nom et port d'attache. Même capital pour tous.");
+  };
+  const foundCompany = () => {
+    const starter = "coaster";
+    const cap = shipSpec(starter).cap;
+    const pl = { color: COLORS[setupIdx], name: draftName || `Compagnie ${COLORS[setupIdx].name}`, port: draftPort, cash: START_CASH, status: "port", readyDay: 1, voyage: null, ship: { id: starter, hull: 100 }, freights: makeFreights(draftPort, cap) };
+    const np = players.map((p, i) => (i === setupIdx ? pl : p));
+    setPlayers(np);
+    if (setupIdx < nPlayers - 1) {
+      const ni = setupIdx + 1;
+      setSetupIdx(ni); setDraftName(`Compagnie ${COLORS[ni].name}`); setDraftPort(null);
+      setLine(`Compagnie ${ni + 1} : nom et port d'attache.`);
+    } else {
+      setClock(1); clockRef.current = 1; prevActor.current = null;
+      schedule(np);
+    }
+  };
+
+  /* ---- décision en port ---- */
+  const dispatch = (f) => {
+    const v = computeVoyage(P.port, f.to, P.ship.id);
+    const departDay = clock;
+    const arriveDay = departDay + v.totalDays;
+    const newP = { ...P, status: "sea", voyage: { departPort: P.port, toPort: f.to, cargo: f, departDay, arriveDay, v } };
+    const np = players.map((p, i) => (i === current ? newP : p));
+    setPlayers(np);
+    setLine(`Cap sur ${portById(f.to).name} — ${v.totalDays} j. Retour prévu au jour ${arriveDay}.`);
+    schedule(np);
+  };
+  const layUp = () => {
+    const newP = { ...P, cash: P.cash - spec.upkeep, readyDay: clock + 1, freights: makeFreights(P.port, spec.cap) };
+    const np = players.map((p, i) => (i === current ? newP : p));
+    setPlayers(np);
+    setLine("Un jour à quai pour guetter un meilleur fret.");
+    schedule(np);
+  };
+  const repairCost = P && P.ship ? Math.round((100 - P.ship.hull) / 100 * shipSpec(P.ship.id).price * 0.18) : 0;
+  const repair = () => {
+    if (!P.ship || P.ship.hull >= 100 || P.cash < repairCost) { if (P.cash < repairCost) setLine("Pas de quoi payer le chantier."); return; }
+    const newP = { ...P, cash: P.cash - repairCost, ship: { ...P.ship, hull: 100 }, readyDay: clock + 2 };
+    const np = players.map((p, i) => (i === current ? newP : p));
+    setPlayers(np);
+    setLine("Coque remise à neuf — deux jours au chantier.");
+    schedule(np);
+  };
+
+  /* ---- courtier ---- */
+  const buyShip = (shipId) => {
+    const s = shipSpec(shipId);
+    const net = P.ship ? s.price - resale(P.ship) : s.price;
+    if (P.cash < net) { setLine("Fonds insuffisants."); return; }
+    const newP = { ...P, cash: P.cash - net, ship: { id: shipId, hull: 100 }, freights: makeFreights(P.port, s.cap) };
+    setPlayers((ps) => ps.map((p, i) => (i === current ? newP : p)));
+    setPhase("turn"); setLine("Nouveau bâtiment à quai.");
+  };
+
+  /* ---- accostage (mini-jeu) ---- */
+  const [dockPos, setDockPos] = useState(50);
+  const dockDir = useRef(1); const dockRaf = useRef(null);
+  useEffect(() => {
+    if (phase !== "docking") return;
+    let last; const speed = 0.055;
+    const loop = (ts) => {
+      if (last == null) last = ts; const dt = ts - last; last = ts;
+      setDockPos((p) => { let np = p + dockDir.current * speed * dt; if (np >= 100) { np = 100; dockDir.current = -1; } if (np <= 0) { np = 0; dockDir.current = 1; } return np; });
+      dockRaf.current = requestAnimationFrame(loop);
+    };
+    dockRaf.current = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(dockRaf.current);
+  }, [phase]);
+  const dockNow = () => {
+    cancelAnimationFrame(dockRaf.current);
+    const d = Math.abs(dockPos - 50);
+    let dockWear = 0, tug = 0, bonus = 0, q;
+    if (d <= 7) { q = "parfait"; bonus = 0.03; }
+    else if (d <= 18) { q = "correct"; dockWear = 3; }
+    else { q = "brutal"; dockWear = 12; tug = 60000; }
+    resolveArrival(dockWear, tug, bonus, q);
+  };
+
+  const resolveArrival = (dockWear, tug, bonus, dockQuality) => {
+    const vg = P.voyage, v = vg.v, f = vg.cargo;
+    const late = v.totalDays > f.deadline;
+    let pay = late ? Math.round(f.pay * 0.5) : f.pay;
+    pay = Math.round(pay * (1 + bonus));
+    const wear = v.baseWear + v.stormWear + dockWear;
+    const newHull = Math.max(0, P.ship.hull - wear);
+    const net = pay - v.runCost - tug;
+    const newCash = P.cash + net;
+    const newP = { ...P, cash: newCash, ship: { ...P.ship, hull: newHull }, port: vg.toPort, status: "port", readyDay: clock, voyage: null, freights: makeFreights(vg.toPort, spec.cap) };
+    const np = players.map((p, i) => (i === current ? newP : p));
+    setPlayers(np);
+    setArrival({ late, pay, runCost: v.runCost, tug, bonus, net, wear, newHull, beaufort: v.beaufort, days: v.totalDays, event: v.event, dockQuality, toName: portById(vg.toPort).name });
+    setLine(late ? "Livraison en retard — l'affréteur rogne le fret." : "À quai, fret livré, caisse renflouée.");
+    setPhase("arrival");
+    if (netWorth(newP) >= TARGET) setWinner(newP);
+  };
+  const afterArrival = () => {
+    setArrival(null);
+    const me = players[current];
+    if (me && netWorth(me) >= TARGET) { setWinner(me); setPhase("over"); setLine(`${me.name} l'emporte — ${money(TARGET)} de valeur.`); return; }
+    schedule(players);
+  };
+
+  const restart = () => {
+    setPhase("lobby"); setPlayers([]); setWinner(null); setArrival(null);
+    setClock(1); prevActor.current = null; navigating.current = false;
+    setLine("Combien de compagnies prennent la mer ?");
+  };
+
+  /* ---------- Carte ---------- */
+  const Map = ({ routeOf }) => (
+    <svg viewBox="0 0 360 180" style={S.map} aria-label="carte marine">
+      <rect x="0" y="0" width="360" height="180" fill={C.sea} />
+      {[30,60,90,120,150,180,210,240,270,300,330].map((x)=>(<line key={"v"+x} x1={x} y1="0" x2={x} y2="180" stroke={C.line} strokeWidth="0.3" opacity="0.4" />))}
+      {[30,60,90,120,150].map((y)=>(<line key={"h"+y} x1="0" y1={y} x2="360" y2={y} stroke={C.line} strokeWidth="0.3" opacity="0.4" />))}
+      <line x1="0" y1="90" x2="360" y2="90" stroke={C.line} strokeWidth="0.6" opacity="0.55" />
+      {/* routes des navires en mer */}
+      {players.map((pl, i) => {
+        if (pl.status !== "sea" || !pl.voyage) return null;
+        const a = proj(portById(pl.voyage.departPort)), b = proj(portById(pl.voyage.toPort));
+        return <line key={"r" + i} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={pl.color.hex} strokeWidth="0.7" strokeDasharray="3 2" opacity="0.5" />;
+      })}
+      {PORTS.map((p) => { const q = proj(p); return (
+        <g key={p.id}>
+          <circle cx={q.x} cy={q.y} r="1.6" fill={C.ink} />
+          <text x={q.x + 3} y={q.y + 2.6} fontSize="5.2" fill={C.ink} opacity="0.75" style={{ fontFamily: "'Cormorant Garamond', serif", fontStyle: "italic" }}>{p.name}</text>
+        </g>); })}
+      {/* navires de toutes les compagnies */}
+      {players.map((pl, i) => {
+        if (!pl.ship) return null;
+        const q = shipPosOf(pl);
+        const active = i === current && (phase === "turn" || phase === "docking" || phase === "arrival");
+        return (
+          <g key={"s" + i} transform={`translate(${q.x},${q.y})`}>
+            <circle r={active ? "2.7" : "2.1"} fill={C.paper} stroke={pl.color.hex} strokeWidth={active ? "1.3" : "0.9"} />
+            <circle r="0.9" fill={pl.color.hex} />
+          </g>
+        );
+      })}
+    </svg>
+  );
+
+  const Header = (
+    <header style={S.head}>
+      <div style={S.brand}>BEAU</div>
+      <div style={S.eyebrow}>LE SOUFFLEUR · ESCALES · HOT-SEAT</div>
+      <div style={S.hairline} />
+    </header>
+  );
+  const Voice = (<div style={S.voice}><span style={S.voiceMark}>—</span><span style={S.voiceText}>{line}</span></div>);
+  const Clock = (
+    <div style={S.clock}><span style={S.clockK}>Jour</span><span style={S.clockN}>{clock}</span><span style={S.clockK}>/ {SEASON_DAYS}</span></div>
+  );
+  const TurnBar = P && P.ship && P.port && (
+    <div style={{ ...S.turnbar, borderColor: P.color.hex }}>
+      <span style={{ ...S.dot, background: P.color.hex }} />
+      <span style={S.turnName}>{P.name}</span>
+      <span style={S.turnMeta}>{portById(P.port).name}</span>
+    </div>
+  );
+  const Stats = P && (
+    <div style={S.stats}>
+      <span><b style={S.k}>Caisse</b> {money(P.cash)}</span>
+      <span><b style={S.k}>Valeur</b> {money(netWorth(P))}</span>
+    </div>
+  );
+  const ShipBar = P && P.ship && (
+    <div style={S.shipbar}>
+      <span>{shipSpec(P.ship.id).name}</span>
+      <span style={S.hullWrap}>
+        <span style={S.hullTrack}><span style={{ ...S.hullFill, width: `${P.ship.hull}%`, background: P.ship.hull > 55 ? C.good : P.ship.hull > 30 ? C.warn : C.bad }} /></span>
+        <span style={S.hullPct}>{P.ship.hull}%</span>
+      </span>
+    </div>
+  );
+
+  return (
+    <div style={S.page}>
+      <style>{CSS}</style>
+      <div style={S.shell}>
+        {Header}
+
+        {phase === "lobby" && (
+          <div style={S.cabinet}>
+            <div style={S.sectionTitle}>Nombre de compagnies</div>
+            <div style={S.lobbyRow}>
+              {[2, 3, 4].map((n) => (<button key={n} onClick={() => startSetup(n)} style={S.lobbyBtn}>{n} joueurs</button>))}
+            </div>
+            <div style={S.rules}>
+              Une horloge commune tourne — <b>1 jour = 1 seconde</b>. Un navire parti pour N jours reste en mer et n'accoste qu'à son jour de retour ; pendant ce temps les autres compagnies jouent. Enchaîner des trajets courts permet donc de jouer plus souvent. Premier à {money(TARGET)} de valeur, ou la plus grosse fortune au terme de la saison.
+            </div>
+          </div>
+        )}
+
+        {phase === "setup" && (
+          <div style={S.cabinet}>
+            <div style={{ ...S.turnbar, borderColor: COLORS[setupIdx].hex }}>
+              <span style={{ ...S.dot, background: COLORS[setupIdx].hex }} />
+              <span style={S.turnName}>Compagnie {setupIdx + 1} / {nPlayers}</span>
+            </div>
+            <input value={draftName} onChange={(e) => setDraftName(e.target.value)} placeholder="Nom de la compagnie" style={S.input} />
+            <div style={S.sectionTitle}>Port d'attache</div>
+            <div style={S.portGrid}>
+              {PORTS.map((p) => (
+                <button key={p.id} onClick={() => setDraftPort(p.id)} style={{ ...S.portBtn, ...(draftPort === p.id ? S.portSel : {}) }}>{p.name}</button>
+              ))}
+            </div>
+            <div style={S.foundNote}>
+              Capital de départ : <b>{money(START_CASH)}</b> — identique pour toutes les compagnies.<br />
+              Navire de fondation : <b>{shipSpec("coaster").name}</b>. Les meilleurs bâtiments s'achètent ensuite chez le courtier, à armes égales.
+            </div>
+            <button onClick={foundCompany} disabled={!draftPort} style={{ ...S.dockBtn, opacity: draftPort ? 1 : 0.4 }}>
+              {setupIdx < nPlayers - 1 ? "Fonder — compagnie suivante" : "Fonder et lever l'ancre"}
+            </button>
+          </div>
+        )}
+
+        {phase === "pass" && players[pending.who] && (
+          <div style={S.cabinet}>
+            <div style={S.passWrap}>
+              <span style={{ ...S.passDot, background: players[pending.who].color.hex }} />
+              <div style={S.passName}>{players[pending.who].name}</div>
+              <div style={S.passMeta}>Jour {clock} · {pending.kind === "arrive" ? "votre navire entre au port" : `au port de ${portById(players[pending.who].port).name}`}</div>
+              <button onClick={() => beginPending(pending.who, pending.kind)} style={S.dockBtn}>Je suis prêt</button>
+              <button onClick={() => setPhase("standings")} style={{ ...S.ghost, marginTop: 10 }}>Voir le classement</button>
+            </div>
+          </div>
+        )}
+
+        {phase === "sailing" && (
+          <div style={S.cabinet}>
+            {Clock}
+            <Map />
+            <div style={S.sailNote}>Les navires font route…</div>
+            <button onClick={skipSail} style={S.action}>Avance rapide jusqu'à la prochaine escale</button>
+          </div>
+        )}
+
+        {phase === "turn" && P && (
+          <div style={S.cabinet}>
+            {TurnBar}{Clock}{Stats}{ShipBar}
+            <Map />
+            <div style={S.sectionTitle}>Bourse de fret — {portById(P.port).name}</div>
+            <div style={S.freightList}>
+              {P.freights.map((f, i) => {
+                const tooBig = f.volume > spec.cap;
+                return (
+                  <button key={i} onClick={() => !tooBig && dispatch(f)} disabled={tooBig} style={{ ...S.freightRow, opacity: tooBig ? 0.4 : 1 }}>
+                    <span style={S.frDest}>{portById(f.to).name}</span>
+                    <span style={S.frCargo}>{f.cargo} · {f.volume} kt</span>
+                    <span style={S.frMeta}>{f.dist.toLocaleString("fr-FR")} nm · ≤ {f.deadline} j</span>
+                    <span style={S.frPay}>{money(f.pay)}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div style={S.harborActions}>
+              <button onClick={layUp} style={S.action}>Attendre (1 j)</button>
+              <button onClick={() => setPhase("broker")} style={S.action}>Courtier</button>
+              <button onClick={repair} disabled={P.ship.hull >= 100} style={{ ...S.action, opacity: P.ship.hull >= 100 ? 0.4 : 1 }}>Réparer{P.ship.hull < 100 ? ` (${money(repairCost)})` : ""}</button>
+            </div>
+          </div>
+        )}
+
+        {phase === "broker" && P && (
+          <div style={S.cabinet}>
+            {TurnBar}{Clock}{Stats}{ShipBar}
+            <div style={S.sectionTitle}>Courtier — revente actuelle : {money(resale(P.ship))}</div>
+            <div style={S.shipList}>
+              {SHIPS.map((s) => {
+                const owned = s.id === P.ship.id; const net = s.price - resale(P.ship);
+                return (
+                  <div key={s.id} style={S.shipCard}>
+                    <div style={S.shipName}>{s.name}{owned ? " ·" : ""}</div>
+                    <div style={S.shipSpecs}>{s.cap} kt · {s.speed} nds · {money(s.upkeep)}/j</div>
+                    <div style={S.shipPrice}>{money(s.price)}</div>
+                    <button onClick={() => buyShip(s.id)} disabled={owned || P.cash < net} style={{ ...S.buyBtn, opacity: owned || P.cash < net ? 0.4 : 1 }}>{owned ? "À bord" : "Changer"}</button>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={S.harborActions}><button onClick={() => setPhase("turn")} style={S.action}>Retour au port</button></div>
+          </div>
+        )}
+
+        {phase === "docking" && P && P.voyage && (
+          <div style={S.cabinet}>
+            {TurnBar}{Clock}{Stats}{ShipBar}
+            <Map />
+            <div style={S.sectionTitle}>Accostage à {portById(P.voyage.toPort).name}</div>
+            <div style={S.dockBar}><span style={S.dockZone} /><span style={{ ...S.dockMarker, left: `calc(${dockPos}% - 2px)`, background: P.color.hex }} /></div>
+            <div style={S.dockHint}>Coupez les gaz quand le navire est dans la zone centrale.</div>
+            <button onClick={dockNow} style={S.dockBtn}>Accoster</button>
+          </div>
+        )}
+
+        {phase === "arrival" && arrival && P && (
+          <div style={S.cabinet}>
+            {TurnBar}{Clock}{Stats}{ShipBar}
+            <div style={S.sectionTitle}>Escale — {arrival.toName}</div>
+            {arrival.event && (<div style={S.eventCard}><b>{EVENT_TEXT[arrival.event].t}.</b> {EVENT_TEXT[arrival.event].d}</div>)}
+            <div style={S.ledger}>
+              <Row k={`Fret livré${arrival.late ? " (retard −50%)" : ""}`} v={money(arrival.pay)} good />
+              <Row k={`Frais (${arrival.days} j, Beaufort ${arrival.beaufort})`} v={money(-arrival.runCost)} />
+              {arrival.tug > 0 && <Row k="Remorqueurs (accostage brutal)" v={money(-arrival.tug)} />}
+              {arrival.bonus > 0 && <Row k="Prime accostage parfait" v={`+${Math.round(arrival.bonus * 100)}%`} good />}
+              <div style={S.ledgerSep} />
+              <Row k="Résultat net" v={money(arrival.net)} bold good={arrival.net >= 0} />
+              <Row k={`Usure (−${arrival.wear}%)`} v={`coque ${arrival.newHull}%`} />
+            </div>
+            <button onClick={afterArrival} style={S.dockBtn}>Continuer</button>
+          </div>
+        )}
+
+        {phase === "standings" && (
+          <div style={S.cabinet}>
+            <div style={S.sectionTitle}>Classement — jour {clock}</div>
+            <div style={S.standList}>
+              {[...players].sort((a, b) => netWorth(b) - netWorth(a)).map((pl, rank) => (
+                <div key={pl.name + rank} style={S.standRow}>
+                  <span style={{ ...S.dot, background: pl.color.hex }} />
+                  <span style={S.standName}>{pl.name}</span>
+                  <span style={S.standPort}>{pl.status === "sea" ? `en mer · escale j.${pl.voyage.arriveDay}` : `${portById(pl.port).name} · libre j.${pl.readyDay}`}</span>
+                  <span style={S.standVal}>{money(netWorth(pl))}</span>
+                </div>
+              ))}
+            </div>
+            <button onClick={() => setPhase("pass")} style={S.dockBtn}>Reprendre</button>
+          </div>
+        )}
+
+        {phase === "over" && winner && (
+          <div style={S.cabinet}>
+            <div style={S.passWrap}>
+              <span style={{ ...S.passDot, background: winner.color.hex }} />
+              <div style={S.passName}>{winner.name}</div>
+              <div style={S.passMeta}>l'emporte avec {money(netWorth(winner))} · jour {clock}</div>
+            </div>
+            <div style={S.standList}>
+              {[...players].sort((a, b) => netWorth(b) - netWorth(a)).map((pl, rank) => (
+                <div key={pl.name + rank} style={S.standRow}>
+                  <span style={{ ...S.dot, background: pl.color.hex }} />
+                  <span style={S.standName}>{rank + 1}. {pl.name}</span>
+                  <span style={S.standVal}>{money(netWorth(pl))}</span>
+                </div>
+              ))}
+            </div>
+            <button onClick={restart} style={S.dockBtn}>Nouvelle partie</button>
+          </div>
+        )}
+
+        {Voice}
+
+        <footer style={S.foot}>
+          <span style={S.objective}>Objectif : {money(TARGET)} · saison {SEASON_DAYS} j · 1 j = 1 s</span>
+          <button onClick={restart} style={S.ghost}>Recommencer</button>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+function Row({ k, v, good, bold }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", fontSize: 16 }}>
+      <span style={{ color: C.muted }}>{k}</span>
+      <span style={{ color: good ? C.good : C.ink, fontWeight: bold ? 600 : 400 }}>{v}</span>
+    </div>
+  );
+}
+
+const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap');
+* { box-sizing: border-box; }
+button { font-family: inherit; } input { font-family: inherit; }
+`;
+
+const S = {
+  page: { minHeight: "100vh", background: `radial-gradient(120% 120% at 50% 0%, #F6F0E4 0%, ${C.bg} 60%)`, display: "flex", alignItems: "center", justifyContent: "center", padding: "26px 14px", fontFamily: "'Cormorant Garamond', Georgia, serif", color: C.ink },
+  shell: { width: "min(94vw, 520px)" },
+  head: { textAlign: "center", marginBottom: 12 },
+  brand: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 13, fontWeight: 600, letterSpacing: "0.42em", paddingLeft: "0.42em" },
+  eyebrow: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 9.5, letterSpacing: "0.24em", color: C.muted, marginTop: 7, paddingLeft: "0.24em" },
+  hairline: { height: 1, background: C.hair, margin: "13px auto 0", width: "100%" },
+
+  cabinet: { padding: 14, background: `linear-gradient(150deg, #E6DBC5 0%, ${C.frame} 55%, ${C.frameEdge} 100%)`, borderRadius: 5, border: `1px solid ${C.frameEdge}`, boxShadow: "0 1px 0 rgba(255,255,255,0.55) inset, 0 30px 56px -34px rgba(32,30,25,0.55)" },
+  map: { width: "100%", display: "block", borderRadius: 3, border: `1px solid ${C.line}`, background: C.sea, boxShadow: "inset 0 1px 4px rgba(32,30,25,0.18)" },
+
+  lobbyRow: { display: "flex", gap: 8 },
+  lobbyBtn: { flex: 1, padding: "16px 8px", border: `1px solid ${C.hair}`, borderRadius: 3, background: C.panel, color: C.ink, fontSize: 18, cursor: "pointer" },
+  rules: { marginTop: 14, fontSize: 16, color: C.muted, fontStyle: "italic", lineHeight: 1.45 },
+  foundNote: { margin: "16px 2px 14px", fontSize: 15.5, color: C.muted, fontStyle: "italic", lineHeight: 1.5 },
+  input: { width: "100%", padding: "11px 12px", border: `1px solid ${C.hair}`, borderRadius: 3, background: C.panel, fontSize: 17, color: C.ink, marginBottom: 4 },
+
+  clock: { display: "flex", alignItems: "baseline", justifyContent: "center", gap: 8, padding: "2px 0 12px" },
+  clockK: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", color: C.muted },
+  clockN: { fontFamily: "'Cormorant Garamond', serif", fontSize: 30, fontStyle: "italic", color: C.terra, lineHeight: 1 },
+
+  turnbar: { display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", marginBottom: 10, background: C.panel, borderRadius: 3, border: "2px solid", borderLeftWidth: 4 },
+  dot: { width: 11, height: 11, borderRadius: "50%", flexShrink: 0, display: "inline-block" },
+  turnName: { fontSize: 17, fontWeight: 500, flex: 1 },
+  turnMeta: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: C.muted },
+
+  stats: { display: "flex", justifyContent: "space-between", padding: "2px 2px 10px", fontSize: 16 },
+  k: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 9, letterSpacing: "0.14em", textTransform: "uppercase", color: C.muted, marginRight: 6, fontWeight: 600 },
+  shipbar: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "8px 12px", marginBottom: 10, background: C.panel, borderRadius: 3, border: `1px solid ${C.hair}`, fontSize: 16 },
+  hullWrap: { display: "flex", alignItems: "center", gap: 7 },
+  hullTrack: { width: 80, height: 5, background: "rgba(32,30,25,0.12)", borderRadius: 3, overflow: "hidden" },
+  hullFill: { height: "100%", display: "block" },
+  hullPct: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 10, color: C.muted },
+
+  sectionTitle: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 10, letterSpacing: "0.16em", textTransform: "uppercase", color: C.muted, margin: "14px 2px 9px" },
+  portGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 },
+  portBtn: { padding: "11px 10px", border: `1px solid ${C.hair}`, borderRadius: 3, background: C.panel, color: C.ink, fontSize: 16, cursor: "pointer", textAlign: "left" },
+  portSel: { boxShadow: `inset 0 0 0 2px ${C.terra}`, background: "#fff" },
+
+  shipList: { display: "flex", flexDirection: "column", gap: 7 },
+  shipCard: { display: "grid", gridTemplateColumns: "1.3fr 1.4fr auto auto", alignItems: "center", gap: 8, padding: "10px 12px", background: C.panel, borderRadius: 3, border: `1px solid ${C.hair}` },
+  shipName: { fontSize: 17 }, shipSpecs: { fontSize: 13, color: C.muted, fontFamily: "ui-sans-serif, system-ui, sans-serif" },
+  shipPrice: { fontSize: 15, textAlign: "right" },
+  buyBtn: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", padding: "8px 12px", border: "none", borderRadius: 2, background: C.terra, color: "#FBF7EF", cursor: "pointer" },
+
+  freightList: { display: "flex", flexDirection: "column", gap: 6 },
+  freightRow: { display: "grid", gridTemplateColumns: "1.1fr 1.3fr 1.2fr auto", alignItems: "center", gap: 8, padding: "10px 12px", background: C.panel, borderRadius: 3, border: `1px solid ${C.hair}`, cursor: "pointer", textAlign: "left" },
+  frDest: { fontSize: 16, fontWeight: 500 }, frCargo: { fontSize: 14, fontFamily: "ui-sans-serif, system-ui, sans-serif" },
+  frMeta: { fontSize: 12, color: C.muted, fontFamily: "ui-sans-serif, system-ui, sans-serif" }, frPay: { fontSize: 16, color: C.terra, textAlign: "right", fontWeight: 600 },
+
+  harborActions: { display: "flex", gap: 8, marginTop: 11 },
+  action: { flex: 1, fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", padding: "11px 8px", border: `1px solid ${C.hair}`, borderRadius: 2, background: "transparent", color: C.ink, cursor: "pointer" },
+
+  sailNote: { textAlign: "center", fontStyle: "italic", fontSize: 17, color: C.muted, margin: "12px 0 10px" },
+
+  dockBar: { position: "relative", height: 34, background: C.sea, borderRadius: 4, border: `1px solid ${C.line}`, overflow: "hidden", marginTop: 4 },
+  dockZone: { position: "absolute", left: "43%", width: "14%", top: 0, bottom: 0, background: "rgba(94,125,90,0.30)", borderLeft: `1px solid ${C.good}`, borderRight: `1px solid ${C.good}` },
+  dockMarker: { position: "absolute", top: 2, bottom: 2, width: 4, borderRadius: 2 },
+  dockHint: { fontSize: 14, color: C.muted, fontStyle: "italic", margin: "8px 2px 12px" },
+  dockBtn: { width: "100%", fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 11, letterSpacing: "0.16em", textTransform: "uppercase", padding: "13px", border: "none", borderRadius: 3, background: C.terra, color: "#FBF7EF", cursor: "pointer", marginTop: 8 },
+
+  passWrap: { textAlign: "center", padding: "26px 10px 18px" },
+  passDot: { width: 20, height: 20, borderRadius: "50%", display: "inline-block", marginBottom: 12 },
+  passName: { fontSize: 30, fontWeight: 500 },
+  passMeta: { fontSize: 16, color: C.muted, fontStyle: "italic", margin: "6px 0 22px" },
+
+  eventCard: { padding: "11px 13px", background: "rgba(124,147,140,0.16)", borderRadius: 3, fontSize: 16, marginBottom: 10, borderLeft: `2px solid ${C.petrol}` },
+  ledger: { padding: "4px 2px", marginBottom: 6 }, ledgerSep: { height: 1, background: C.hair, margin: "6px 0" },
+
+  standList: { display: "flex", flexDirection: "column", gap: 6, marginTop: 4 },
+  standRow: { display: "flex", alignItems: "center", gap: 9, padding: "10px 12px", background: C.panel, borderRadius: 3, border: `1px solid ${C.hair}` },
+  standName: { fontSize: 16, fontWeight: 500, flex: 1 },
+  standPort: { fontSize: 12, color: C.muted, fontFamily: "ui-sans-serif, system-ui, sans-serif" },
+  standVal: { fontSize: 16, color: C.terra, fontWeight: 600 },
+
+  voice: { marginTop: 13, display: "flex", gap: 10, alignItems: "baseline", padding: "13px 4px 4px", borderTop: `1px solid ${C.hair}` },
+  voiceMark: { color: C.terra, fontSize: 20, lineHeight: 1 }, voiceText: { fontStyle: "italic", fontSize: 18, lineHeight: 1.35, color: C.ink },
+
+  foot: { marginTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" },
+  objective: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: C.muted },
+  ghost: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", padding: "8px 14px", border: `1px solid ${C.hair}`, background: "transparent", color: C.ink, cursor: "pointer", borderRadius: 2 },
+};
+
+return BeauEscalesMulti;
+})();
+
+/* ==== Puissance4 ==== */
+const Puissance4 = (function(){
+const {useState,useEffect,useRef,useCallback,useMemo}=React;
+
+/* ============================================================
+   BEAU · LE SOUFFLEUR — Puissance 4
+   À deux (passe-passe) ou contre le Souffleur. 7 × 6.
+   ============================================================ */
+
+const C = {
+  bg: "#F1EADD",
+  frame: "#DCD0B8", frameEdge: "#CDBE9F",
+  board: "#D9CCB0",          // panneau du plateau
+  hole: "#F3EDDE",           // alvéole vide
+  ink: "#201E19",
+  terra: "#A8553B",          // joueur 1 / vous
+  petrol: "#4E6E78",         // joueur 2 / Souffleur
+  hair: "rgba(32,30,25,0.14)", muted: "#6B6557", panel: "#FBF6EA",
+};
+const ROWS = 6, COLS = 7;
+const COLOR = { 1: C.terra, 2: C.petrol };
+const NAME = { 1: "Terre", 2: "Pétrole" };
+const ORDER = [3, 2, 4, 1, 5, 0, 6];
+
+/* ---------- Moteur ---------- */
+const empty = () => Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+const dropRow = (g, c) => { for (let r = ROWS - 1; r >= 0; r--) if (g[r][c] === 0) return r; return -1; };
+const cloneG = (g) => g.map((row) => row.slice());
+const full = (g) => g[0].every((v) => v !== 0);
+
+function lineFrom(g, r, c, p) {
+  const dirs = [[0, 1], [1, 0], [1, 1], [1, -1]];
+  for (const [dr, dc] of dirs) {
+    const cells = [[r, c]];
+    for (const s of [1, -1]) {
+      let rr = r + dr * s, cc = c + dc * s;
+      while (rr >= 0 && rr < ROWS && cc >= 0 && cc < COLS && g[rr][cc] === p) { cells.push([rr, cc]); rr += dr * s; cc += dc * s; }
+    }
+    if (cells.length >= 4) return cells;
+  }
+  return null;
+}
+
+/* ---------- IA ---------- */
+function evaluate(g, ai) {
+  const opp = ai === 1 ? 2 : 1;
+  let score = 0;
+  for (let r = 0; r < ROWS; r++) if (g[r][3] === ai) score += 3;
+  const windows = [];
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+    if (c + 3 < COLS) windows.push([[r,c],[r,c+1],[r,c+2],[r,c+3]]);
+    if (r + 3 < ROWS) windows.push([[r,c],[r+1,c],[r+2,c],[r+3,c]]);
+    if (r + 3 < ROWS && c + 3 < COLS) windows.push([[r,c],[r+1,c+1],[r+2,c+2],[r+3,c+3]]);
+    if (r + 3 < ROWS && c - 3 >= 0) windows.push([[r,c],[r+1,c-1],[r+2,c-2],[r+3,c-3]]);
+  }
+  for (const w of windows) {
+    let a = 0, o = 0;
+    for (const [r, c] of w) { if (g[r][c] === ai) a++; else if (g[r][c] === opp) o++; }
+    if (a && o) continue;
+    if (a === 3) score += 100; else if (a === 2) score += 10; else if (a === 1) score += 1;
+    if (o === 3) score -= 120; else if (o === 2) score -= 10;
+  }
+  return score;
+}
+// score du point de vue du joueur courant (négamax + alpha-bêta)
+function negamaxScore(g, depth, alpha, beta, player, ai) {
+  if (full(g)) return 0;
+  const moves = ORDER.filter((c) => g[0][c] === 0);
+  if (depth === 0) {
+    const e = evaluate(g, ai);
+    return player === ai ? e : -e;
+  }
+  let best = -Infinity;
+  for (const c of moves) {
+    const r = dropRow(g, c);
+    g[r][c] = player;
+    const win = lineFrom(g, r, c, player);
+    let val;
+    if (win) val = 100000 + depth;
+    else val = -negamaxScore(g, depth - 1, -beta, -alpha, player === 1 ? 2 : 1, ai);
+    g[r][c] = 0;
+    if (val > best) best = val;
+    if (best > alpha) alpha = best;
+    if (alpha >= beta) break;
+  }
+  return best;
+}
+function bestMove(grid, ai, depth) {
+  const g = cloneG(grid);
+  const moves = ORDER.filter((c) => g[0][c] === 0);
+  // 1) gagner tout de suite ; 2) bloquer la menace adverse
+  for (const c of moves) { const r = dropRow(g, c); g[r][c] = ai; const w = lineFrom(g, r, c, ai); g[r][c] = 0; if (w) return c; }
+  const opp = ai === 1 ? 2 : 1;
+  for (const c of moves) { const r = dropRow(g, c); g[r][c] = opp; const w = lineFrom(g, r, c, opp); g[r][c] = 0; if (w) return c; }
+  let best = moves[0], bestVal = -Infinity;
+  for (const c of moves) {
+    const r = dropRow(g, c);
+    g[r][c] = ai;
+    const win = lineFrom(g, r, c, ai);
+    const val = win ? 1e9 : -negamaxScore(g, depth - 1, -Infinity, Infinity, opp, ai);
+    g[r][c] = 0;
+    if (val > bestVal) { bestVal = val; best = c; }
+  }
+  return best;
+}
+
+/* ============================================================ */
+function BeauPuissance4() {
+  const [grid, setGrid] = useState(empty);
+  const [turn, setTurn] = useState(1);
+  const [over, setOver] = useState(false);
+  const [winner, setWinner] = useState(0);
+  const [winCells, setWinCells] = useState([]);
+  const [mode, setMode] = useState("solo");     // solo | duo
+  const [level, setLevel] = useState("doux");   // doux | malin
+  const [starter, setStarter] = useState(1);
+  const [score, setScore] = useState({ 1: 0, 2: 0 });
+  const [thinking, setThinking] = useState(false);
+  const [hover, setHover] = useState(null);
+  const [line, setLine] = useState("À toi de jouer. Aligne-en quatre !");
+
+  const isWin = (r, c) => winCells.some(([wr, wc]) => wr === r && wc === c);
+
+  const place = useCallback((g, c, p) => {
+    const r = dropRow(g, c);
+    if (r < 0) return null;
+    const ng = cloneG(g);
+    ng[r][c] = p;
+    const wl = lineFrom(ng, r, c, p);
+    return { ng, r, c, wl };
+  }, []);
+
+  const finish = (ng, p, wl) => {
+    setGrid(ng);
+    if (wl) {
+      setOver(true); setWinner(p); setWinCells(wl);
+      setScore((s) => ({ ...s, [p]: s[p] + 1 }));
+      setLine(mode === "solo" ? (p === 1 ? "Quatre alignés — bravo, tu gagnes !" : "Quatre alignés. Le Souffleur l'emporte cette fois.") : `Quatre alignés — ${NAME[p]} gagne !`);
+    } else if (full(ng)) {
+      setOver(true); setWinner(0); setLine("Plateau plein, personne ne gagne. On rejoue ?");
+    } else {
+      const nx = p === 1 ? 2 : 1;
+      setTurn(nx);
+      setLine(mode === "solo" ? (nx === 1 ? "À toi." : "Le Souffleur réfléchit…") : `Au tour de ${NAME[nx]}.`);
+    }
+  };
+
+  const human = (c) => {
+    if (over || thinking) return;
+    if (mode === "solo" && turn !== 1) return;
+    const res = place(grid, c, turn);
+    if (!res) return;
+    finish(res.ng, turn, res.wl);
+  };
+
+  /* tour du Souffleur */
+  useEffect(() => {
+    if (mode !== "solo" || over || turn !== 2) return;
+    setThinking(true);
+    const id = setTimeout(() => {
+      let c;
+      const moves = ORDER.filter((col) => grid[0][col] === 0);
+      if (level === "doux" && Math.random() < 0.35) c = moves[Math.floor(Math.random() * moves.length)];
+      else c = bestMove(grid, 2, level === "malin" ? 6 : 3);
+      const res = place(grid, c, 2);
+      if (res) finish(res.ng, 2, res.wl);
+      setThinking(false);
+    }, 500);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line
+  }, [turn, over, mode]);
+
+  const newGame = (keepScore = true) => {
+    const s = starter === 1 ? 2 : 1;
+    setStarter(s);
+    setGrid(empty()); setOver(false); setWinner(0); setWinCells([]); setTurn(s); setThinking(false);
+    if (!keepScore) setScore({ 1: 0, 2: 0 });
+    setLine(mode === "solo" ? (s === 1 ? "À toi de commencer." : "Le Souffleur commence…") : `${NAME[s]} commence.`);
+  };
+  const switchMode = (m) => {
+    setMode(m); setGrid(empty()); setOver(false); setWinner(0); setWinCells([]); setTurn(1); setStarter(1); setThinking(false); setScore({ 1: 0, 2: 0 });
+    setLine(m === "solo" ? "À toi de jouer contre le Souffleur." : "À deux : Terre commence.");
+  };
+
+  const colFull = (c) => grid[0][c] !== 0;
+
+  return (
+    <div style={S.page}>
+      <style>{CSS}</style>
+      <div style={S.shell}>
+        <header style={S.head}>
+          <div style={S.brand}>BEAU</div>
+          <div style={S.eyebrow}>LE SOUFFLEUR · PUISSANCE 4</div>
+          <div style={S.hairline} />
+        </header>
+
+        {/* score */}
+        <div style={S.scoreRow}>
+          <div style={{ ...S.scoreChip, ...(turn === 1 && !over ? S.scoreActive : {}) }}>
+            <span style={{ ...S.sdot, background: C.terra }} />
+            <span>{mode === "solo" ? "Toi" : "Terre"}</span><b style={S.scoreN}>{score[1]}</b>
+          </div>
+          <div style={{ ...S.scoreChip, ...(turn === 2 && !over ? S.scoreActive : {}) }}>
+            <span style={{ ...S.sdot, background: C.petrol }} />
+            <span>{mode === "solo" ? "Souffleur" : "Pétrole"}</span><b style={S.scoreN}>{score[2]}</b>
+          </div>
+        </div>
+
+        {/* plateau */}
+        <div style={S.cabinet}>
+          <div style={S.board}>
+            {Array.from({ length: COLS }).map((_, c) => (
+              <button
+                key={c}
+                onClick={() => human(c)}
+                onMouseEnter={() => setHover(c)}
+                onMouseLeave={() => setHover(null)}
+                disabled={over || colFull(c) || (mode === "solo" && turn !== 1) || thinking}
+                style={S.col}
+                aria-label={`colonne ${c + 1}`}
+              >
+                {Array.from({ length: ROWS }).map((__, r) => {
+                  const v = grid[r][c];
+                  const win = isWin(r, c);
+                  return (
+                    <span key={r} style={S.holeWrap}>
+                      <span style={S.hole}>
+                        {v !== 0 && (
+                          <span style={{ ...S.disc, background: COLOR[v], "--fall": r + 1, ...(win ? S.discWin : {}) }} />
+                        )}
+                      </span>
+                    </span>
+                  );
+                })}
+                {hover === c && !over && !colFull(c) && !(mode === "solo" && turn !== 1) && (
+                  <span style={{ ...S.preview, background: COLOR[turn] }} />
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div style={S.voice}>
+          <span style={S.voiceMark}>—</span>
+          <span style={{ ...S.voiceText }} className={thinking ? "pulse" : ""}>{line}</span>
+        </div>
+
+        <footer style={S.foot}>
+          <div style={S.toggle}>
+            <button onClick={() => switchMode("solo")} style={{ ...S.tBtn, ...(mode === "solo" ? S.tOn : {}) }}>Souffleur</button>
+            <button onClick={() => switchMode("duo")} style={{ ...S.tBtn, ...(mode === "duo" ? S.tOn : {}) }}>À deux</button>
+          </div>
+          {mode === "solo" && (
+            <div style={S.toggle}>
+              <button onClick={() => setLevel("doux")} style={{ ...S.tBtn, ...(level === "doux" ? S.tOn : {}) }}>Doux</button>
+              <button onClick={() => setLevel("malin")} style={{ ...S.tBtn, ...(level === "malin" ? S.tOn : {}) }}>Malin</button>
+            </div>
+          )}
+          <button onClick={() => newGame(true)} style={S.solid}>Rejouer</button>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap');
+* { box-sizing: border-box; }
+button { font-family: inherit; }
+.pulse { animation: bp 1.5s ease-in-out infinite; }
+@keyframes bp { 0%,100%{opacity:.6} 50%{opacity:1} }
+@keyframes drop { 0% { transform: translateY(calc(var(--fall) * -112%)); } 60% { transform: translateY(0); } 75% { transform: translateY(-7%); } 100% { transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce){ @keyframes drop { from,to { transform:none } } }
+`;
+
+const S = {
+  page: { minHeight: "100vh", background: `radial-gradient(120% 120% at 50% 0%, #F6F0E4 0%, ${C.bg} 60%)`, display: "flex", alignItems: "center", justifyContent: "center", padding: "28px 14px", fontFamily: "'Cormorant Garamond', Georgia, serif", color: C.ink },
+  shell: { width: "min(94vw, 460px)" },
+  head: { textAlign: "center", marginBottom: 12 },
+  brand: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 13, fontWeight: 600, letterSpacing: "0.42em", paddingLeft: "0.42em" },
+  eyebrow: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 10, letterSpacing: "0.26em", color: C.muted, marginTop: 7, paddingLeft: "0.26em" },
+  hairline: { height: 1, background: C.hair, margin: "13px auto 0", width: "100%" },
+
+  scoreRow: { display: "flex", gap: 8, marginBottom: 10 },
+  scoreChip: { flex: 1, display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 3, fontSize: 16 },
+  scoreActive: { boxShadow: `inset 0 0 0 2px ${C.frameEdge}` },
+  sdot: { width: 12, height: 12, borderRadius: "50%", flexShrink: 0 },
+  scoreN: { marginLeft: "auto", fontSize: 20, fontStyle: "italic" },
+
+  cabinet: { padding: 12, background: `linear-gradient(150deg, #E6DBC5 0%, ${C.frame} 55%, ${C.frameEdge} 100%)`, borderRadius: 6, border: `1px solid ${C.frameEdge}`, boxShadow: "0 1px 0 rgba(255,255,255,0.55) inset, 0 30px 56px -34px rgba(32,30,25,0.55)" },
+  board: { display: "grid", gridTemplateColumns: `repeat(${COLS}, 1fr)`, gap: 0, background: C.board, borderRadius: 5, padding: 7, boxShadow: "inset 0 2px 8px rgba(32,30,25,0.22)" },
+  col: { position: "relative", border: "none", background: "transparent", padding: 0, cursor: "pointer", display: "flex", flexDirection: "column", gap: 0, WebkitTapHighlightColor: "transparent" },
+  holeWrap: { width: "100%", aspectRatio: "1 / 1", padding: "7%", display: "flex", alignItems: "center", justifyContent: "center" },
+  hole: { width: "100%", height: "100%", borderRadius: "50%", background: C.hole, boxShadow: "inset 0 2px 4px rgba(32,30,25,0.28)", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" },
+  disc: { width: "100%", height: "100%", borderRadius: "50%", animation: "drop 0.45s cubic-bezier(.34,1.2,.64,1) both", boxShadow: "inset 0 2px 3px rgba(255,255,255,0.25), inset 0 -3px 4px rgba(0,0,0,0.18)" },
+  discWin: { boxShadow: `0 0 0 3px ${C.panel}, 0 0 0 5px rgba(32,30,25,0.35), inset 0 2px 3px rgba(255,255,255,0.3)` },
+  preview: { position: "absolute", top: "1%", left: "50%", transform: "translateX(-50%)", width: "70%", aspectRatio: "1/1", borderRadius: "50%", opacity: 0.35, pointerEvents: "none" },
+
+  voice: { marginTop: 13, display: "flex", gap: 10, alignItems: "baseline", padding: "13px 2px 4px", borderTop: `1px solid ${C.hair}` },
+  voiceMark: { color: C.terra, fontSize: 20, lineHeight: 1 },
+  voiceText: { fontStyle: "italic", fontSize: 19, lineHeight: 1.35, color: C.ink },
+
+  foot: { marginTop: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, flexWrap: "wrap" },
+  toggle: { display: "flex", border: `1px solid ${C.hair}`, borderRadius: 2, overflow: "hidden" },
+  tBtn: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", padding: "8px 12px", border: "none", background: "transparent", color: C.muted, cursor: "pointer" },
+  tOn: { background: C.ink, color: C.bg },
+  solid: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", padding: "9px 16px", border: "none", background: C.terra, color: "#FBF7EF", cursor: "pointer", borderRadius: 2 },
+};
+
+return BeauPuissance4;
+})();
+
+/* ==== Quiz ==== */
+const Quiz = (function(){
+const {useState,useEffect,useRef,useCallback,useMemo}=React;
+
+/* ============================================================
+   BEAU · Le quiz du Souffleur / The Prompter's quiz
+   Bilingue (FR/EN) via la prop `lang`. Un dilemme par semaine.
+   Des principes, jamais des conseils personnalisés.
+   ============================================================ */
+
+const C = {
+  bg: "#F1EADD", paper: "#F4EEDF", panel: "#FBF6EA",
+  ink: "#201E19", terra: "#A8553B", petrol: "#4E6E78",
+  hair: "rgba(32,30,25,0.14)", muted: "#6B6557",
+};
+
+const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap');
+@keyframes rise { from { transform: translateY(6px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
+`;
+
+const UI = {
+  fr: {
+    title: "Le quiz du Souffleur", weeklyEyebrow: (w) => `DILEMME DE LA SEMAINE · ${w}`, randomEyebrow: "AU HASARD DES DILEMMES",
+    voicePre: "Un dilemme, trois chemins. Choisissez, puis je vous dirai ce que j'en pense.",
+    voicePost: "Voici mon penchant. Vous restez libre, naturellement.",
+    leanTag: "penchant du Souffleur",
+    streakNone: "Premier dilemme", streak: (n) => `${n} dilemme${n > 1 ? "s" : ""} médité${n > 1 ? "s" : ""}`,
+    challenge: "Défier un ami", another: "Un autre, au hasard", backToWeek: "Revenir à la semaine",
+    fine: "Le Souffleur partage des principes et des repères — jamais un conseil financier personnalisé. Vos décisions vous appartiennent.",
+    challengeMsg: (q, opts) => `Dilemme du Souffleur — BEAU\n« ${q} »\n${opts.map((o, i) => `  ${String.fromCharCode(65 + i)}. ${o}`).join("\n")}\nVotre verdict ?`,
+    copied: "Dilemme copié — défiez un ami.",
+  },
+  en: {
+    title: "The Prompter's quiz", weeklyEyebrow: (w) => `DILEMMA OF THE WEEK · ${w}`, randomEyebrow: "DILEMMAS AT RANDOM",
+    voicePre: "One dilemma, three paths. Choose, then I'll tell you what I make of it.",
+    voicePost: "Here is where I lean. You remain free, of course.",
+    leanTag: "the Prompter leans here",
+    streakNone: "First dilemma", streak: (n) => `${n} dilemma${n > 1 ? "s" : ""} pondered`,
+    challenge: "Challenge a friend", another: "Another, at random", backToWeek: "Back to the week",
+    fine: "The Prompter shares principles and bearings — never personalised financial advice. Your decisions are your own.",
+    challengeMsg: (q, opts) => `The Prompter's dilemma — BEAU\n“${q}”\n${opts.map((o, i) => `  ${String.fromCharCode(65 + i)}. ${o}`).join("\n")}\nYour verdict?`,
+    copied: "Dilemma copied — challenge a friend.",
+  },
+};
+
+/* banque bilingue : lean partagé, texte par langue */
+const BANK = [
+  { lean: 1,
+    fr: { q: "Les marchés cèdent 20 % en quelques séances. Que fait, le plus souvent, l'investisseur aguerri à long horizon ?",
+      options: ["Vendre pour stopper l'hémorragie", "Ne rien changer à son plan", "Renforcer si l'horizon le permet"],
+      verdict: "Le Souffleur penche pour « ne rien changer ». Vendre dans la panique transforme une baisse passagère en perte définitive ; historiquement, les meilleures séances suivent de près les pires. Mais tout dépend de votre horizon et de votre capacité à dormir la nuit." },
+    en: { q: "Markets fall 20% in a few sessions. What, most often, does the seasoned long-horizon investor do?",
+      options: ["Sell to stop the bleeding", "Change nothing in the plan", "Add more if the horizon allows"],
+      verdict: "The Prompter leans toward “change nothing.” Selling in panic turns a passing dip into a permanent loss; historically, the best sessions sit right beside the worst. But it all depends on your horizon and whether you can sleep at night." } },
+  { lean: 2,
+    fr: { q: "Un crédit immobilier à 1,8 % court encore dix ans, et vous disposez d'une somme. Rembourser par anticipation, ou investir ?",
+      options: ["Rembourser : la dette pèse", "Investir : viser plus que 1,8 %", "Ça dépend"],
+      verdict: "« Ça dépend » est la seule réponse honnête. Mathématiquement, si un placement raisonnable rapporte plus que 1,8 % net, on garde la dette. Mais le rendement n'est pas garanti, la dette si — et la tranquillité d'esprit a une valeur que le tableur ignore." },
+    en: { q: "A mortgage at 1.8% still runs ten years, and you have a lump sum. Repay early, or invest?",
+      options: ["Repay: debt weighs", "Invest: aim above 1.8%", "It depends"],
+      verdict: "“It depends” is the only honest answer. Mathematically, if a reasonable investment nets more than 1.8%, you keep the debt. But returns aren't guaranteed, the debt is — and peace of mind has a value the spreadsheet ignores." } },
+  { lean: 2,
+    fr: { q: "Deux fonds identiques. L'un prélève 0,3 % de frais par an, l'autre 1,5 %. Sur trente ans, l'écart final est…",
+      options: ["Négligeable", "Notable", "Considérable"],
+      verdict: "Considérable. 1,2 % de frais par an, capitalisés sur trente ans, peuvent absorber un tiers du capital final. Les frais sont la seule variable que vous maîtrisez vraiment — le Souffleur les surveille de près." },
+    en: { q: "Two identical funds. One charges 0.3% a year, the other 1.5%. Over thirty years, the final gap is…",
+      options: ["Negligible", "Notable", "Considerable"],
+      verdict: "Considerable. 1.2% in annual fees, compounded over thirty years, can swallow a third of the final capital. Fees are the one variable you truly control — the Prompter watches them closely." } },
+  { lean: 1,
+    fr: { q: "Avant d'investir le moindre euro, quelle est la première fondation à poser ?",
+      options: ["Choisir les bons titres", "Un matelas de sécurité liquide", "Optimiser la fiscalité"],
+      verdict: "Le matelas d'abord. Quelques mois de dépenses, disponibles immédiatement, évitent de vendre ses placements au pire moment quand la vie surprend. On bâtit la toiture après les fondations, pas avant." },
+    en: { q: "Before investing a single euro, what is the first foundation to lay?",
+      options: ["Pick the right stocks", "A liquid safety cushion", "Optimise the tax angle"],
+      verdict: "The cushion first. A few months of expenses, instantly available, spare you from selling investments at the worst moment when life surprises you. You build the roof after the foundations, not before." } },
+  { lean: 1,
+    fr: { q: "« Acheter au plus bas » : stratégie ou mirage ?",
+      options: ["Stratégie, avec de la patience", "Mirage : nul ne sonne la cloche", "Les deux"],
+      verdict: "Surtout un mirage. Personne ne sonne la cloche au point bas, et l'attente coûte souvent plus que la baisse évitée. Le temps passé sur le marché bat, en général, le temps à choisir le moment d'entrer." },
+    en: { q: "“Buy the dip at the bottom”: strategy or mirage?",
+      options: ["Strategy, with patience", "Mirage: no one rings the bell", "Both"],
+      verdict: "Mostly a mirage. No one rings a bell at the low, and waiting often costs more than the drop avoided. Time in the market generally beats timing the market." } },
+  { lean: 1,
+    fr: { q: "L'inflation tourne autour de 3 %. Laisser dormir une grosse réserve en compte courant, c'est…",
+      options: ["Prudent", "Une érosion silencieuse", "Sans importance"],
+      verdict: "Une érosion silencieuse. À 3 % l'an, le pouvoir d'achat d'une somme inerte fond d'environ un quart en dix ans. Garder du liquide pour la sécurité, oui ; en garder trop, c'est payer une assurance hors de prix." },
+    en: { q: "Inflation runs near 3%. Leaving a large reserve idle in a current account is…",
+      options: ["Prudent", "A silent erosion", "Of no consequence"],
+      verdict: "A silent erosion. At 3% a year, the purchasing power of idle money melts by about a quarter in ten years. Keeping cash for safety, yes; keeping too much is paying for overpriced insurance." } },
+  { lean: 1,
+    fr: { q: "La diversification, pour le Souffleur, c'est avant tout…",
+      options: ["Multiplier les lignes", "Répartir des risques non corrélés", "Suivre les modes"],
+      verdict: "Répartir des risques qui ne montent pas et ne chutent pas ensemble. Détenir vingt valeurs du même secteur n'est pas se diversifier — c'est se concentrer en croyant le contraire." },
+    en: { q: "Diversification, for the Prompter, is above all…",
+      options: ["Holding many lines", "Spreading uncorrelated risks", "Following the fashions"],
+      verdict: "Spreading risks that don't rise and fall together. Holding twenty names in the same sector isn't diversifying — it's concentrating while believing the opposite." } },
+  { lean: 1,
+    fr: { q: "On vous propose un rendement « garanti » bien supérieur au marché, sans risque apparent. Réflexe ?",
+      options: ["Saisir l'occasion vite", "Se méfier et vérifier", "Demander à un ami"],
+      verdict: "Se méfier, toujours. Rendement élevé et risque nul ne coexistent pas durablement ; quand l'un est promis sans l'autre, c'est souvent qu'un risque est caché — ou que c'est une fable. Le Souffleur n'aime pas les contes trop beaux." },
+    en: { q: "You're offered a “guaranteed” return well above the market, with no apparent risk. Reflex?",
+      options: ["Seize it quickly", "Be wary and verify", "Ask a friend"],
+      verdict: "Be wary, always. High return and zero risk don't coexist for long; when one is promised without the other, a risk is usually hidden — or it's a fable. The Prompter distrusts tales too good to be true." } },
+  { lean: 1,
+    fr: { q: "L'effet de levier (emprunter pour investir) fait quoi, au juste ?",
+      options: ["Multiplie les gains", "Multiplie gains ET pertes", "Réduit le risque"],
+      verdict: "Il amplifie dans les deux sens. Le levier flatte quand tout monte et punit durement quand ça tourne — y compris jusqu'à devoir vendre au plus mauvais moment. Outil puissant, à manier les yeux ouverts." },
+    en: { q: "Leverage (borrowing to invest) does what, exactly?",
+      options: ["Multiplies gains", "Multiplies gains AND losses", "Reduces risk"],
+      verdict: "It amplifies both ways. Leverage flatters when everything rises and punishes hard when it turns — even forcing a sale at the worst moment. A powerful tool, to be handled with open eyes." } },
+  { lean: 1,
+    fr: { q: "Votre portefeuille a une devise étrangère qui pèse lourd. Le risque de change, c'est…",
+      options: ["Un détail", "Un vrai facteur à mesurer", "Une opportunité sûre"],
+      verdict: "Un vrai facteur. Une performance brillante dans une devise peut s'effacer une fois reconvertie. Le change n'est ni à fuir ni à ignorer — il se mesure, et parfois se couvre, selon vos besoins réels." },
+    en: { q: "Your portfolio carries a heavy weight in a foreign currency. Currency risk is…",
+      options: ["A detail", "A real factor to measure", "A sure opportunity"],
+      verdict: "A real factor. A brilliant return in one currency can vanish once converted back. Currency is neither to flee nor to ignore — it's measured, and sometimes hedged, according to your real needs." } },
+  { lean: 0,
+    fr: { q: "Après trois belles années, on est tenté de croire que ça continuera. Ce biais s'appelle…",
+      options: ["Le biais de récence", "La prudence", "La lucidité"],
+      verdict: "Le biais de récence : projeter le passé proche sur l'avenir. Les arbres ne montent pas jusqu'au ciel ; les meilleures années passées ne sont pas une promesse. Le Souffleur relit ses convictions, surtout quand tout va bien." },
+    en: { q: "After three fine years, one is tempted to believe it will continue. This bias is called…",
+      options: ["Recency bias", "Prudence", "Clear-sightedness"],
+      verdict: "Recency bias: projecting the recent past onto the future. Trees don't grow to the sky; the best past years are no promise. The Prompter rereads his convictions, especially when all is going well." } },
+  { lean: 1,
+    fr: { q: "Pour faire travailler les intérêts composés, l'ingrédient décisif est…",
+      options: ["Le bon timing", "Le temps", "Un gros capital de départ"],
+      verdict: "Le temps, avant tout. Les intérêts composés récompensent la durée plus que la mise initiale ou le moment d'entrée : commencer tôt et laisser faire bat souvent commencer fort et s'impatienter." },
+    en: { q: "To put compound interest to work, the decisive ingredient is…",
+      options: ["The right timing", "Time", "A large starting capital"],
+      verdict: "Time, above all. Compound interest rewards duration more than the initial sum or the entry point: starting early and letting it run often beats starting big and growing impatient." } },
+];
+
+function isoWeek(d) {
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const day = t.getUTCDay() || 7; t.setUTCDate(t.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  return Math.ceil(((t - yearStart) / 86400000 + 1) / 7);
+}
+const weekKey = () => { const d = new Date(); return `${d.getFullYear()}-W${isoWeek(d)}`; };
+const weeklyIndex = () => isoWeek(new Date()) % BANK.length;
+
+const HKEY = "beau_quiz";
+const loadHist = () => { try { return JSON.parse(localStorage.getItem(HKEY) || "{}"); } catch (e) { return {}; } };
+const saveHist = (h) => { try { localStorage.setItem(HKEY, JSON.stringify(h)); } catch (e) {} };
+
+function BeauQuizSouffleur({ lang = "fr" }) {
+  const u = UI[lang] || UI.fr;
+  const [hist, setHist] = useState(loadHist);
+  const [idx, setIdx] = useState(weeklyIndex);
+  const [weekly, setWeekly] = useState(true);
+  const [picked, setPicked] = useState(null);
+  const [revealed, setRevealed] = useState(false);
+  const [flash, setFlash] = useState("");
+
+  useEffect(() => { saveHist(hist); }, [hist]);
+  const raw = BANK[idx];
+  const item = raw[lang] || raw.fr;
+  const wk = weekKey();
+  const answeredThisWeek = !!hist[wk];
+  const streak = Object.keys(hist).length;
+
+  useEffect(() => {
+    if (weekly && answeredThisWeek) { setPicked(hist[wk].pick); setRevealed(true); }
+  }, [weekly]); // eslint-disable-line
+
+  const choose = (i) => {
+    if (revealed) return;
+    setPicked(i); setRevealed(true);
+    if (weekly) setHist((h) => ({ ...h, [wk]: { pick: i, idx } }));
+  };
+  const randomOne = () => { let n = idx; while (n === idx) n = Math.floor(Math.random() * BANK.length); setIdx(n); setWeekly(false); setPicked(null); setRevealed(false); };
+  const backToWeek = () => { setIdx(weeklyIndex()); setWeekly(true); setPicked(null); setRevealed(false); };
+  const challenge = () => {
+    try { navigator.clipboard.writeText(u.challengeMsg(item.q, item.options)).then(() => { setFlash(u.copied); setTimeout(() => setFlash(""), 2200); }); } catch (e) {}
+  };
+
+  return (
+    <div style={S.page}>
+      <style>{CSS}</style>
+      <div style={S.shell}>
+        <header style={S.head}>
+          <div style={S.brand}>BEAU</div>
+          <div style={S.title}>{u.title}</div>
+          <div style={S.eyebrow}>{weekly ? u.weeklyEyebrow(wk) : u.randomEyebrow}</div>
+          <div style={S.hair} />
+        </header>
+
+        <div style={S.voice}>
+          <span style={S.voiceMark}>—</span>
+          <span style={S.voiceText}>{revealed ? u.voicePost : u.voicePre}</span>
+        </div>
+
+        <div style={S.card}>
+          <div style={S.q}>{item.q}</div>
+          <div style={S.opts}>
+            {item.options.map((o, i) => {
+              const isPick = picked === i;
+              const isLean = revealed && raw.lean === i;
+              return (
+                <button key={i} onClick={() => choose(i)} disabled={revealed}
+                  style={{ ...S.opt, ...(isPick ? S.optPick : {}), ...(isLean ? S.optLean : {}) }}>
+                  <span style={S.optLetter}>{String.fromCharCode(65 + i)}</span>
+                  <span>{o}</span>
+                  {isLean && <span style={S.leanTag}>{u.leanTag}</span>}
+                </button>
+              );
+            })}
+          </div>
+          {revealed && (
+            <div style={S.verdict}><span style={S.vMark}>—</span><span style={S.vText}>{item.verdict}</span></div>
+          )}
+        </div>
+
+        <div style={S.foot}>
+          <span style={S.streak}>{streak > 0 ? u.streak(streak) : u.streakNone}</span>
+          <div style={S.actions}>
+            {revealed && <button onClick={challenge} style={S.ghost}>{u.challenge}</button>}
+            {weekly ? <button onClick={randomOne} style={S.ghost}>{u.another}</button>
+                    : <button onClick={backToWeek} style={S.ghost}>{u.backToWeek}</button>}
+          </div>
+        </div>
+
+        <div style={S.fine}>{u.fine}</div>
+        {flash && <div style={S.flash}>{flash}</div>}
+      </div>
+    </div>
+  );
+}
+
+const S = {
+  page: { minHeight: "100vh", background: `radial-gradient(120% 120% at 50% 0%, #F6F0E4 0%, ${C.bg} 60%)`, display: "flex", justifyContent: "center", padding: "44px 16px", color: C.ink, fontFamily: "'Cormorant Garamond', Georgia, serif" },
+  shell: { width: "min(94vw, 560px)" },
+  head: { textAlign: "center", marginBottom: 14 },
+  brand: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 14, fontWeight: 600, letterSpacing: "0.46em", paddingLeft: "0.46em" },
+  title: { fontSize: 38, fontStyle: "italic", marginTop: 10, lineHeight: 1 },
+  eyebrow: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 10, letterSpacing: "0.28em", color: C.muted, marginTop: 9, paddingLeft: "0.28em" },
+  hair: { height: 1, background: C.hair, margin: "16px auto 0" },
+  voice: { display: "flex", gap: 10, alignItems: "baseline", padding: "14px 2px", margin: "6px 0 14px", borderBottom: `1px solid ${C.hair}` },
+  voiceMark: { color: C.terra, fontSize: 20, lineHeight: 1 },
+  voiceText: { fontStyle: "italic", fontSize: 19, lineHeight: 1.35 },
+  card: { background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 6, padding: "22px 20px" },
+  q: { fontSize: 23, lineHeight: 1.35, marginBottom: 16 },
+  opts: { display: "flex", flexDirection: "column", gap: 9 },
+  opt: { position: "relative", textAlign: "left", display: "flex", alignItems: "center", gap: 12, padding: "13px 15px", borderWidth: 1, borderStyle: "solid", borderColor: C.hair, borderRadius: 4, background: C.paper, color: C.ink, fontSize: 18.5, fontFamily: "'Cormorant Garamond', serif", cursor: "pointer", transition: "all 0.15s" },
+  optPick: { borderColor: C.ink, boxShadow: "inset 0 0 0 1px " + C.ink },
+  optLean: { background: "rgba(78,110,120,0.10)", borderColor: C.petrol },
+  optLetter: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 11, letterSpacing: "0.1em", color: C.muted, width: 16 },
+  leanTag: { marginLeft: "auto", fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 8.5, letterSpacing: "0.12em", textTransform: "uppercase", color: C.petrol },
+  verdict: { display: "flex", gap: 10, alignItems: "baseline", marginTop: 18, paddingTop: 16, borderTop: `1px solid ${C.hair}`, animation: "rise 0.3s ease" },
+  vMark: { color: C.terra, fontSize: 20, lineHeight: 1 },
+  vText: { fontStyle: "italic", fontSize: 18.5, lineHeight: 1.5 },
+  foot: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 16 },
+  streak: { fontStyle: "italic", fontSize: 16, color: C.muted },
+  actions: { display: "flex", gap: 8 },
+  ghost: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", padding: "8px 13px", border: `1px solid ${C.hair}`, borderRadius: 999, background: "transparent", color: C.ink, cursor: "pointer" },
+  fine: { fontSize: 14.5, fontStyle: "italic", color: C.muted, lineHeight: 1.4, marginTop: 16, textAlign: "center" },
+  flash: { position: "fixed", bottom: 22, left: "50%", transform: "translateX(-50%)", background: C.ink, color: C.bg, padding: "10px 18px", borderRadius: 999, fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 12, letterSpacing: "0.04em", boxShadow: "0 12px 30px -12px rgba(32,30,25,0.6)" },
+};
+
+return BeauQuizSouffleur;
+})();
+
+/* ==== Pari ==== */
+const Pari = (function(){
+const {useState,useEffect,useRef,useCallback,useMemo}=React;
+
+/* ============================================================
+   BEAU · Le pari scellé / The sealed wager
+   Bilingue (FR/EN) via la prop `lang`. Commit-reveal, sans serveur.
+   ============================================================ */
+
+const C = {
+  bg: "#F1EADD", paper: "#F4EEDF", panel: "#FBF6EA",
+  ink: "#201E19", terra: "#A8553B", petrol: "#4E6E78",
+  hair: "rgba(32,30,25,0.14)", muted: "#6B6557", good: "#4E6E78", bad: "#A8553B",
+};
+
+const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap');
+@keyframes sealIn { from { transform: scale(0.9); opacity: 0 } to { transform: scale(1); opacity: 1 } }
+`;
+
+const STR = {
+  fr: {
+    title: "Le pari scellé", eyebrow: "UNE CONVICTION, FIGÉE DANS LE TEMPS",
+    tabNew: "Nouveau", tabMine: "Mes paris", tabVerify: "Vérifier",
+    voiceIdle: "Une conviction ? Engagez-la. On verra, le moment venu, qui avait l'œil juste.",
+    needPred: "Écrivez d'abord votre prédiction — une phrase claire, vérifiable le jour dit.",
+    needDate: "Fixez une échéance : la date où l'on saura.",
+    sealedLine: "Scellé. Votre prédiction est figée — personne ne peut la lire ni la modifier tant que vous ne la révélez pas.",
+    revealedLine: "Révélé. La preuve copiée contient tout pour confirmer que rien n'a bougé depuis le jour du scellement.",
+    okLine: "Authentique. La prédiction correspond exactement au sceau — aucune retouche.",
+    koLine: "Sceau non concordant. Le texte a été modifié après coup, ou la preuve est corrompue.",
+    labelPred: "Votre prédiction", phPred: "Ex. : l'or dépassera 3 000 $ l'once avant la fin de l'année.",
+    labelDeadline: "Échéance", labelStake: "Mise (symbolique)", phStake: "un déjeuner, l'honneur…",
+    sealBtn: "Sceller le pari", sealing: "Scellement…",
+    fineNew: "Mises symboliques — l'honneur, un café. BEAU n'est pas une salle de paris. Rien ne quitte votre appareil.",
+    empty: "Aucun pari pour l'instant. Le premier engagement se prend dans l'onglet « Nouveau ».",
+    sealed: "Scellé", revealed: "Révélé", deadlineReached: "échéance atteinte · ", stake: "Mise : ", seal: "Sceau ",
+    outcome: "Issue : ", shareSeal: "Partager le sceau", revealShare: "Révéler & partager la preuve", recopy: "Re-copier la preuve",
+    won: "Gagné", lost: "Perdu", del: "Supprimer",
+    labelToken: "Coller une preuve (commence par BEAU1:)", verifyBtn: "Vérifier l'authenticité",
+    authentic: "✓ Authentique — rien n'a été retouché", notMatch: "✗ Non concordant",
+    badFormat: "Format non reconnu. Collez une preuve commençant par BEAU1:", incomplete: "Preuve incomplète.",
+    vPred: "Prédiction", vSealed: "Scellé le", vDeadline: "Échéance", vStake: "Mise", vSeal: "Sceau",
+    fineVerify: "Le pari et son sel vous parviennent dans la preuve. BEAU recalcule le sceau et confirme qu'il correspond mot pour mot.",
+    copiedSeal: "Sceau copié — partagez-le.", copiedProof: "Preuve copiée — votre ami peut la vérifier dans l'onglet Vérifier.",
+    shareSealMsg: (h, d, s) => `Pari scellé — BEAU\nSceau : ${h}\nÉchéance : ${d}${s ? `\nMise : ${s}` : ""}\nLe contenu sera révélé le moment venu, et vérifiable.`,
+    locale: "fr-FR", dash: "—",
+  },
+  en: {
+    title: "The sealed wager", eyebrow: "A CONVICTION, FIXED IN TIME",
+    tabNew: "New", tabMine: "My wagers", tabVerify: "Verify",
+    voiceIdle: "A conviction? Commit to it. When the day comes, we'll see who had the keener eye.",
+    needPred: "Write your prediction first — one clear sentence, checkable on the day.",
+    needDate: "Set a deadline: the date we'll know.",
+    sealedLine: "Sealed. Your prediction is locked — no one can read or change it until you reveal it.",
+    revealedLine: "Revealed. The copied proof holds everything needed to confirm nothing moved since you sealed it.",
+    okLine: "Authentic. The prediction matches the seal exactly — untouched.",
+    koLine: "Seal mismatch. The text was altered afterwards, or the proof is corrupted.",
+    labelPred: "Your prediction", phPred: "e.g. gold will pass $3,000 an ounce before year's end.",
+    labelDeadline: "Deadline", labelStake: "Stake (symbolic)", phStake: "a lunch, your honour…",
+    sealBtn: "Seal the wager", sealing: "Sealing…",
+    fineNew: "Symbolic stakes — your honour, a coffee. BEAU is not a betting house. Nothing leaves your device.",
+    empty: "No wagers yet. The first commitment is made in the “New” tab.",
+    sealed: "Sealed", revealed: "Revealed", deadlineReached: "deadline reached · ", stake: "Stake: ", seal: "Seal ",
+    outcome: "Outcome: ", shareSeal: "Share the seal", revealShare: "Reveal & share the proof", recopy: "Re-copy the proof",
+    won: "Won", lost: "Lost", del: "Delete",
+    labelToken: "Paste a proof (starts with BEAU1:)", verifyBtn: "Verify authenticity",
+    authentic: "✓ Authentic — nothing was altered", notMatch: "✗ Mismatch",
+    badFormat: "Unrecognised format. Paste a proof starting with BEAU1:", incomplete: "Incomplete proof.",
+    vPred: "Prediction", vSealed: "Sealed on", vDeadline: "Deadline", vStake: "Stake", vSeal: "Seal",
+    fineVerify: "The wager and its salt reach you inside the proof. BEAU recomputes the seal and confirms it matches word for word.",
+    copiedSeal: "Seal copied — share it.", copiedProof: "Proof copied — your friend can verify it in the Verify tab.",
+    shareSealMsg: (h, d, s) => `Sealed wager — BEAU\nSeal: ${h}\nDeadline: ${d}${s ? `\nStake: ${s}` : ""}\nThe content will be revealed in time, and verifiable.`,
+    locale: "en-GB", dash: "—",
+  },
+};
+
+async function sha256Hex(str) {
+  const data = new TextEncoder().encode(str);
+  const buf = await crypto.subtle.digest("SHA-256", data);
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+function makeSalt() {
+  const a = new Uint8Array(8); crypto.getRandomValues(a);
+  return [...a].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+const canonical = (p, d, c, s) => `${p.trim()}\u241F${d}\u241F${c}\u241F${s}`;
+function b64enc(obj) { return "BEAU1:" + btoa(unescape(encodeURIComponent(JSON.stringify(obj)))); }
+function b64dec(tok) { return JSON.parse(decodeURIComponent(escape(atob(tok.trim().replace(/^BEAU1:/, ""))))); }
+
+const KEY = "beau_paris";
+const loadBets = () => { try { return JSON.parse(localStorage.getItem(KEY) || "[]"); } catch (e) { return []; } };
+const saveBets = (b) => { try { localStorage.setItem(KEY, JSON.stringify(b)); } catch (e) {} };
+const shortSeal = (h) => h.slice(0, 8) + "·" + h.slice(8, 16) + "·" + h.slice(-8);
+function copy(text, done) { try { navigator.clipboard.writeText(text).then(() => done && done(), () => done && done()); } catch (e) { done && done(); } }
+
+function BeauPariScelle({ lang = "fr" }) {
+  const t = STR[lang] || STR.fr;
+  const fmtDate = (iso) => { if (!iso) return "—"; return new Date(iso).toLocaleDateString(t.locale, { day: "2-digit", month: "long", year: "numeric" }); };
+
+  const [tab, setTab] = useState("new");
+  const [bets, setBets] = useState(loadBets);
+  const [pred, setPred] = useState("");
+  const [deadline, setDeadline] = useState("");
+  const [stake, setStake] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [flash, setFlash] = useState("");
+  const [verifyTok, setVerifyTok] = useState("");
+  const [verifyRes, setVerifyRes] = useState(null);
+  const [line, setLine] = useState(t.voiceIdle);
+
+  useEffect(() => { saveBets(bets); }, [bets]);
+  useEffect(() => { setLine((cur) => (cur === STR.fr.voiceIdle || cur === STR.en.voiceIdle) ? t.voiceIdle : cur); }, [lang]); // eslint-disable-line
+  const toast = (m) => { setFlash(m); setTimeout(() => setFlash(""), 2200); };
+
+  const seal = async () => {
+    if (!pred.trim()) { setLine(t.needPred); return; }
+    if (!deadline) { setLine(t.needDate); return; }
+    setBusy(true);
+    const createdAt = new Date().toISOString();
+    const salt = makeSalt();
+    const hash = await sha256Hex(canonical(pred, deadline, createdAt, salt));
+    const bet = { id: createdAt + "-" + salt.slice(0, 4), pred: pred.trim(), deadline, stake: stake.trim(), createdAt, salt, hash, revealed: false, outcome: null };
+    setBets((b) => [bet, ...b]);
+    setPred(""); setStake(""); setBusy(false); setTab("mine");
+    setLine(t.sealedLine);
+  };
+  const shareSeal = (bet) => copy(t.shareSealMsg(bet.hash, fmtDate(bet.deadline), bet.stake), () => toast(t.copiedSeal));
+  const revealShare = (bet) => {
+    const tok = b64enc({ p: bet.pred, d: bet.deadline, c: bet.createdAt, s: bet.salt, h: bet.hash, m: bet.stake });
+    setBets((b) => b.map((x) => (x.id === bet.id ? { ...x, revealed: true } : x)));
+    copy(tok, () => toast(t.copiedProof));
+    setLine(t.revealedLine);
+  };
+  const setOutcome = (bet, o) => setBets((b) => b.map((x) => (x.id === bet.id ? { ...x, outcome: o } : x)));
+  const remove = (bet) => setBets((b) => b.filter((x) => x.id !== bet.id));
+
+  const doVerify = async () => {
+    setVerifyRes(null);
+    let o;
+    try { o = b64dec(verifyTok); } catch (e) { setVerifyRes({ ok: false, reason: t.badFormat }); return; }
+    if (!o || !o.p || !o.h) { setVerifyRes({ ok: false, reason: t.incomplete }); return; }
+    const recomputed = await sha256Hex(canonical(o.p, o.d, o.c, o.s));
+    const ok = recomputed === o.h;
+    setVerifyRes({ ok, pred: o.p, deadline: o.d, createdAt: o.c, stake: o.m, seal: o.h });
+    setLine(ok ? t.okLine : t.koLine);
+  };
+
+  return (
+    <div style={S.page}>
+      <style>{CSS}</style>
+      <div style={S.shell}>
+        <header style={S.head}>
+          <div style={S.brand}>BEAU</div>
+          <div style={S.title}>{t.title}</div>
+          <div style={S.eyebrow}>{t.eyebrow}</div>
+          <div style={S.hair} />
+        </header>
+
+        <div style={S.tabs}>
+          <button onClick={() => setTab("new")} style={{ ...S.tab, ...(tab === "new" ? S.tabOn : {}) }}>{t.tabNew}</button>
+          <button onClick={() => setTab("mine")} style={{ ...S.tab, ...(tab === "mine" ? S.tabOn : {}) }}>{t.tabMine}{bets.length ? ` · ${bets.length}` : ""}</button>
+          <button onClick={() => setTab("verify")} style={{ ...S.tab, ...(tab === "verify" ? S.tabOn : {}) }}>{t.tabVerify}</button>
+        </div>
+
+        <div style={S.voice}><span style={S.voiceMark}>{t.dash}</span><span style={S.voiceText}>{line}</span></div>
+
+        {tab === "new" && (
+          <div style={S.card}>
+            <label style={S.label}>{t.labelPred}</label>
+            <textarea value={pred} onChange={(e) => setPred(e.target.value)} rows={3} placeholder={t.phPred} style={S.textarea} />
+            <div style={S.row}>
+              <div style={{ flex: 1 }}>
+                <label style={S.label}>{t.labelDeadline}</label>
+                <input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} style={S.input} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={S.label}>{t.labelStake}</label>
+                <input value={stake} onChange={(e) => setStake(e.target.value)} placeholder={t.phStake} style={S.input} />
+              </div>
+            </div>
+            <button onClick={seal} disabled={busy} style={S.seal}>{busy ? t.sealing : t.sealBtn}</button>
+            <div style={S.fine}>{t.fineNew}</div>
+          </div>
+        )}
+
+        {tab === "mine" && (
+          <div style={S.list}>
+            {bets.length === 0 && <div style={S.empty}>{t.empty}</div>}
+            {bets.map((bet) => {
+              const past = bet.deadline && new Date(bet.deadline) <= new Date();
+              return (
+                <div key={bet.id} style={S.bet}>
+                  <div style={S.betTop}>
+                    <span style={{ ...S.badge, ...(bet.revealed ? S.badgeRev : {}) }}>{bet.revealed ? t.revealed : t.sealed}</span>
+                    <span style={S.betDate}>{past ? t.deadlineReached : ""}{fmtDate(bet.deadline)}</span>
+                  </div>
+                  <div style={S.betPred}>{bet.pred}</div>
+                  {bet.stake && <div style={S.betStake}>{t.stake}{bet.stake}</div>}
+                  <div style={S.sealLine} title={bet.hash}>{t.seal}{shortSeal(bet.hash)}</div>
+                  {bet.outcome && <div style={{ ...S.outcome, color: bet.outcome === "won" ? C.good : C.bad }}>{t.outcome}{bet.outcome === "won" ? t.won : t.lost}</div>}
+                  <div style={S.betActions}>
+                    <button onClick={() => shareSeal(bet)} style={S.ghost}>{t.shareSeal}</button>
+                    <button onClick={() => revealShare(bet)} style={S.ghost}>{bet.revealed ? t.recopy : t.revealShare}</button>
+                    {past && !bet.outcome && (<>
+                      <button onClick={() => setOutcome(bet, "won")} style={S.win}>{t.won}</button>
+                      <button onClick={() => setOutcome(bet, "lost")} style={S.lose}>{t.lost}</button>
+                    </>)}
+                    <button onClick={() => remove(bet)} style={S.del}>{t.del}</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {tab === "verify" && (
+          <div style={S.card}>
+            <label style={S.label}>{t.labelToken}</label>
+            <textarea value={verifyTok} onChange={(e) => setVerifyTok(e.target.value)} rows={3} placeholder="BEAU1:…" style={S.textarea} />
+            <button onClick={doVerify} style={S.seal}>{t.verifyBtn}</button>
+            {verifyRes && (
+              <div style={{ ...S.verify, borderColor: verifyRes.ok ? C.good : C.bad }}>
+                <div style={{ ...S.verdict, color: verifyRes.ok ? C.good : C.bad }}>{verifyRes.ok ? t.authentic : t.notMatch}</div>
+                {verifyRes.reason && <div style={S.fine}>{verifyRes.reason}</div>}
+                {verifyRes.pred && (<>
+                  <div style={S.vRow}><span style={S.vKey}>{t.vPred}</span><span>{verifyRes.pred}</span></div>
+                  <div style={S.vRow}><span style={S.vKey}>{t.vSealed}</span><span>{fmtDate(verifyRes.createdAt)}</span></div>
+                  <div style={S.vRow}><span style={S.vKey}>{t.vDeadline}</span><span>{fmtDate(verifyRes.deadline)}</span></div>
+                  {verifyRes.stake && <div style={S.vRow}><span style={S.vKey}>{t.vStake}</span><span>{verifyRes.stake}</span></div>}
+                  <div style={S.vRow}><span style={S.vKey}>{t.vSeal}</span><span style={S.mono}>{shortSeal(verifyRes.seal)}</span></div>
+                </>)}
+              </div>
+            )}
+            <div style={S.fine}>{t.fineVerify}</div>
+          </div>
+        )}
+
+        {flash && <div style={S.flash}>{flash}</div>}
+      </div>
+    </div>
+  );
+}
+
+const S = {
+  page: { minHeight: "100vh", background: `radial-gradient(120% 120% at 50% 0%, #F6F0E4 0%, ${C.bg} 60%)`, display: "flex", justifyContent: "center", padding: "44px 16px", color: C.ink, fontFamily: "'Cormorant Garamond', Georgia, serif" },
+  shell: { width: "min(94vw, 560px)" },
+  head: { textAlign: "center", marginBottom: 14 },
+  brand: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 14, fontWeight: 600, letterSpacing: "0.46em", paddingLeft: "0.46em" },
+  title: { fontSize: 38, fontStyle: "italic", marginTop: 10, lineHeight: 1 },
+  eyebrow: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 10, letterSpacing: "0.3em", color: C.muted, marginTop: 9, paddingLeft: "0.3em" },
+  hair: { height: 1, background: C.hair, margin: "16px auto 0" },
+  tabs: { display: "flex", gap: 6, justifyContent: "center", margin: "18px 0 4px" },
+  tab: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", padding: "8px 14px", border: `1px solid ${C.hair}`, borderRadius: 999, background: "transparent", color: C.muted, cursor: "pointer" },
+  tabOn: { background: C.ink, color: C.bg, borderColor: C.ink },
+  voice: { display: "flex", gap: 10, alignItems: "baseline", padding: "14px 2px", margin: "8px 0 14px", borderBottom: `1px solid ${C.hair}` },
+  voiceMark: { color: C.terra, fontSize: 20, lineHeight: 1 },
+  voiceText: { fontStyle: "italic", fontSize: 19, lineHeight: 1.35 },
+  card: { background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 6, padding: "20px 18px", display: "flex", flexDirection: "column", gap: 10 },
+  label: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: C.muted },
+  textarea: { width: "100%", boxSizing: "border-box", padding: "12px 13px", border: `1px solid ${C.hair}`, borderRadius: 3, background: C.paper, fontSize: 18, color: C.ink, fontFamily: "'Cormorant Garamond', serif", resize: "vertical", lineHeight: 1.4 },
+  input: { width: "100%", boxSizing: "border-box", padding: "11px 12px", border: `1px solid ${C.hair}`, borderRadius: 3, background: C.paper, fontSize: 17, color: C.ink, fontFamily: "'Cormorant Garamond', serif" },
+  row: { display: "flex", gap: 12, flexWrap: "wrap" },
+  seal: { marginTop: 4, padding: "13px", border: "none", borderRadius: 3, background: C.terra, color: "#FBF7EF", fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 11, letterSpacing: "0.16em", textTransform: "uppercase", cursor: "pointer" },
+  fine: { fontSize: 14.5, fontStyle: "italic", color: C.muted, lineHeight: 1.4 },
+  list: { display: "flex", flexDirection: "column", gap: 12 },
+  empty: { fontStyle: "italic", color: C.muted, fontSize: 18, textAlign: "center", padding: "26px 10px" },
+  bet: { background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 6, padding: "16px 16px", animation: "sealIn 0.3s ease" },
+  betTop: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 },
+  badge: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 9, letterSpacing: "0.14em", textTransform: "uppercase", padding: "4px 9px", borderRadius: 999, background: "rgba(168,85,59,0.12)", color: C.terra },
+  badgeRev: { background: "rgba(78,110,120,0.14)", color: C.petrol },
+  betDate: { fontSize: 14.5, fontStyle: "italic", color: C.muted },
+  betPred: { fontSize: 20, lineHeight: 1.3, margin: "2px 0" },
+  betStake: { fontSize: 15.5, fontStyle: "italic", color: C.muted, marginTop: 2 },
+  sealLine: { fontFamily: "ui-monospace, monospace", fontSize: 11.5, color: C.muted, marginTop: 8, letterSpacing: "0.02em" },
+  outcome: { fontSize: 16, fontStyle: "italic", marginTop: 4 },
+  betActions: { display: "flex", flexWrap: "wrap", gap: 7, marginTop: 12 },
+  ghost: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", padding: "7px 11px", border: `1px solid ${C.hair}`, borderRadius: 2, background: "transparent", color: C.ink, cursor: "pointer" },
+  win: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", padding: "7px 11px", border: "none", borderRadius: 2, background: C.petrol, color: "#FBF7EF", cursor: "pointer" },
+  lose: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", padding: "7px 11px", border: "none", borderRadius: 2, background: C.terra, color: "#FBF7EF", cursor: "pointer" },
+  del: { fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", padding: "7px 11px", border: "none", borderRadius: 2, background: "transparent", color: C.muted, cursor: "pointer", marginLeft: "auto" },
+  verify: { marginTop: 8, padding: "14px 14px", borderWidth: 1, borderStyle: "solid", borderColor: C.hair, borderRadius: 4, background: C.paper, display: "flex", flexDirection: "column", gap: 6 },
+  verdict: { fontSize: 21, fontStyle: "italic" },
+  vRow: { display: "flex", gap: 10, fontSize: 16.5, lineHeight: 1.35 },
+  vKey: { minWidth: 92, color: C.muted, fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", paddingTop: 4 },
+  mono: { fontFamily: "ui-monospace, monospace", fontSize: 12 },
+  flash: { position: "fixed", bottom: 22, left: "50%", transform: "translateX(-50%)", background: C.ink, color: C.bg, padding: "10px 18px", borderRadius: 999, fontFamily: "ui-sans-serif, system-ui, sans-serif", fontSize: 12, letterSpacing: "0.04em", boxShadow: "0 12px 30px -12px rgba(32,30,25,0.6)" },
+};
+
+return BeauPariScelle;
+})();
+
+/* ======================= PORTAIL BEAU JEUX (bilingue) ======================= */
+const HC = { bg:"#F1EADD", paper:"#F4EEDF", ink:"#201E19", terra:"#A8553B", petrol:"#4E6E78", hair:"rgba(32,30,25,0.14)", muted:"#6B6557", panel:"#FBF6EA" };
+const Emb = ({children}) => (<svg viewBox="0 0 40 40" width="46" height="46" aria-hidden="true" style={{display:"block"}}><g fill="none" stroke={HC.ink} strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round">{children}</g></svg>);
+const EmbEchecs = () => (<Emb><path d="M18.6 6 H21.4 V9 H24 V11 H21.4 V14 H18.6 V11 H16 V9 H18.6 Z" fill={HC.terra} stroke={HC.terra}/><path d="M13 18 C16 13 24 13 27 18 L25.5 30 H14.5 Z" fill={HC.paper}/><path d="M12 33 H28 L26.5 30 H13.5 Z" fill={HC.paper}/></Emb>);
+const EmbTawla = () => (<Emb><rect x="6" y="7" width="28" height="26" rx="2" fill={HC.paper}/><path d="M11 7 L14 20 L8 20 Z" fill={HC.terra} stroke={HC.terra}/><path d="M20 7 L23 20 L17 20 Z" fill={HC.petrol} stroke={HC.petrol}/><path d="M14 33 L17 20 L11 20 Z" fill={HC.petrol} stroke={HC.petrol}/><path d="M23 33 L26 20 L20 20 Z" fill={HC.terra} stroke={HC.terra}/></Emb>);
+const EmbSudoku = () => (<Emb><rect x="7" y="7" width="26" height="26" rx="1.5" fill={HC.paper}/><line x1="7" y1="15.7" x2="33" y2="15.7"/><line x1="7" y1="24.3" x2="33" y2="24.3"/><line x1="15.7" y1="7" x2="15.7" y2="33"/><line x1="24.3" y1="7" x2="24.3" y2="33"/><text x="10.5" y="14" fontSize="6" fill={HC.terra} stroke="none" style={{fontFamily:"'Cormorant Garamond',serif",fontStyle:"italic"}}>5</text><text x="27.5" y="31.5" fontSize="6" fill={HC.terra} stroke="none" style={{fontFamily:"'Cormorant Garamond',serif",fontStyle:"italic"}}>2</text></Emb>);
+const EmbEscales = () => (<Emb><circle cx="20" cy="20" r="13" fill={HC.paper}/><path d="M20 9 L22.4 18 L20 16.5 L17.6 18 Z" fill={HC.terra} stroke={HC.terra}/><line x1="20" y1="9" x2="20" y2="31"/><line x1="9" y1="20" x2="31" y2="20"/><circle cx="20" cy="20" r="2" fill={HC.petrol} stroke={HC.petrol}/></Emb>);
+const EmbP4 = () => (<Emb><rect x="7" y="8" width="26" height="24" rx="2" fill={HC.paper}/><circle cx="14" cy="15" r="3" fill={HC.terra} stroke={HC.terra}/><circle cx="26" cy="15" r="3" fill="none"/><circle cx="14" cy="25" r="3" fill="none"/><circle cx="26" cy="25" r="3" fill={HC.petrol} stroke={HC.petrol}/><circle cx="20" cy="20" r="3" fill={HC.terra} stroke={HC.terra}/></Emb>);
+const EmbQuiz = () => (<Emb><line x1="20" y1="8" x2="20" y2="30"/><line x1="11" y1="13" x2="29" y2="13"/><circle cx="20" cy="8" r="1.8" fill={HC.terra} stroke={HC.terra}/><path d="M11 13 L7.5 21 H14.5 Z" fill={HC.paper}/><path d="M29 13 L25.5 21 H32.5 Z" fill={HC.paper}/><line x1="14" y1="31" x2="26" y2="31"/></Emb>);
+const EmbPari = () => (<Emb><circle cx="20" cy="20" r="11.5" fill={HC.paper}/><circle cx="20" cy="20" r="7.6" fill="none" stroke={HC.terra} strokeWidth="1"/><path d="M20 14 L21.5 18.2 L26 18.2 L22.3 20.9 L23.7 25.2 L20 22.6 L16.3 25.2 L17.7 20.9 L14 18.2 L18.5 18.2 Z" fill={HC.terra} stroke={HC.terra}/></Emb>);
+
+const PSTR = {
+  fr: { roomTitle:"La salle de jeux", roomEyebrow:"LE SOUFFLEUR", enterLine:"— Entrez votre nom, et prenez place à la table.", namePh:"Votre nom", enterBtn:"Entrer",
+        hello:(n)=>`Bonjour ${n}`, hubEyebrow:"LA SALLE DE JEUX DU SOUFFLEUR", choose:(n)=>`Choisissez votre table, ${n}.`,
+        footer:"BEAU · une table de jeux, pas une salle d'arcade.", logout:"Changer de nom", back:"‹ Jeux", defaultName:"Armateur" },
+  en: { roomTitle:"The games room", roomEyebrow:"THE PROMPTER", enterLine:"— Enter your name, and take your seat at the table.", namePh:"Your name", enterBtn:"Enter",
+        hello:(n)=>`Hello ${n}`, hubEyebrow:"THE PROMPTER'S GAMES ROOM", choose:(n)=>`Choose your table, ${n}.`,
+        footer:"BEAU · a games table, not an arcade.", logout:"Change name", back:"‹ Games", defaultName:"Skipper" },
+};
+const GAMES = [
+  { id:"echecs", emblem:EmbEchecs, comp:Echecs, fr:{name:"Échecs",desc:"À deux, ou contre le Souffleur.",tag:"1–2 joueurs"}, en:{name:"Chess",desc:"Two players, or against the Prompter.",tag:"1–2 players"} },
+  { id:"tawla", emblem:EmbTawla, comp:Tawla, fr:{name:"Tawla",desc:"Le backgammon — règles incluses.",tag:"1 joueur"}, en:{name:"Tawla",desc:"Backgammon — rules included.",tag:"1 player"} },
+  { id:"sudoku", emblem:EmbSudoku, comp:Sudoku, fr:{name:"Sudoku",desc:"Grilles à solution unique.",tag:"1 joueur"}, en:{name:"Sudoku",desc:"Unique-solution grids.",tag:"1 player"} },
+  { id:"escales", emblem:EmbEscales, comp:Escales, fr:{name:"Escales",desc:"Armateur en mer — à plusieurs.",tag:"2–4 joueurs"}, en:{name:"Ports of Call",desc:"Shipowner at sea — for several.",tag:"2–4 players"} },
+  { id:"p4", emblem:EmbP4, comp:Puissance4, fr:{name:"Puissance 4",desc:"À deux ou contre le Souffleur.",tag:"1–2 joueurs"}, en:{name:"Connect Four",desc:"Two players or against the Prompter.",tag:"1–2 players"} },
+  { id:"quiz", emblem:EmbQuiz, comp:Quiz, fr:{name:"Quiz du Souffleur",desc:"Un dilemme patrimonial par semaine.",tag:"hebdomadaire"}, en:{name:"The Prompter's Quiz",desc:"One wealth dilemma each week.",tag:"weekly"} },
+  { id:"pari", emblem:EmbPari, comp:Pari, fr:{name:"Le pari scellé",desc:"Engagez-vous, scellez, partagez.",tag:"vérifiable"}, en:{name:"The Sealed Wager",desc:"Commit, seal, share.",tag:"verifiable"} },
+];
+
+function LangToggle({lang, onChange}){
+  return (
+    <div style={H.lang}>
+      <button onClick={()=>onChange("fr")} style={{...H.langBtn, ...(lang==="fr"?H.langOn:{})}}>FR</button>
+      <button onClick={()=>onChange("en")} style={{...H.langBtn, ...(lang==="en"?H.langOn:{})}}>EN</button>
+    </div>
+  );
+}
+
+function BeauJeux(){
+  const readName = () => { try { return localStorage.getItem("beau_name") || ""; } catch(e){ return ""; } };
+  const readLang = () => { try { return localStorage.getItem("beau_lang") || "fr"; } catch(e){ return "fr"; } };
+  const [lang, setLang] = useState(readLang);
+  const [name, setName] = useState(readName);
+  const [entered, setEntered] = useState(() => !!readName());
+  const [draft, setDraft] = useState("");
+  const [active, setActive] = useState(null);
+  const P = PSTR[lang] || PSTR.fr;
+  const changeLang = (l) => { setLang(l); try { localStorage.setItem("beau_lang", l); } catch(e){} };
+  const enter = () => { const n = (draft || P.defaultName).trim(); setName(n); setEntered(true); try { localStorage.setItem("beau_name", n); } catch(e){} };
+  const logout = () => { setEntered(false); setActive(null); setDraft(""); try { localStorage.removeItem("beau_name"); } catch(e){} };
+
+  if (!entered) {
+    return (
+      <div style={H.portal}><div style={H.portalCard}>
+        <div style={H.brandBig}>BEAU</div>
+        <div style={H.portalTitle}>{P.roomTitle}</div>
+        <div style={H.eyebrow}>{P.roomEyebrow}</div>
+        <div style={{display:"flex",justifyContent:"center",marginTop:12}}><LangToggle lang={lang} onChange={changeLang} /></div>
+        <div style={H.hairline} />
+        <div style={H.portalLine}>{P.enterLine}</div>
+        <input value={draft} onChange={(e)=>setDraft(e.target.value)} onKeyDown={(e)=>{ if(e.key==="Enter") enter(); }} placeholder={P.namePh} style={H.input} autoFocus />
+        <button onClick={enter} style={H.enterBtn}>{P.enterBtn}</button>
+      </div></div>
+    );
+  }
+  if (active) {
+    const G = GAMES.find((g)=>g.id===active); const Comp = G.comp;
+    return (<div style={{position:"relative", minHeight:"100vh"}}><button onClick={()=>setActive(null)} style={H.back}>{P.back}</button><Comp lang={lang} /></div>);
+  }
+  return (
+    <div style={H.page}><div style={H.shell}>
+      <div style={{position:"absolute", top:18, right:18}}><LangToggle lang={lang} onChange={changeLang} /></div>
+      <header style={H.head}>
+        <div style={H.brand}>BEAU</div>
+        <div style={H.title}>{P.hello(name)}</div>
+        <div style={H.eyebrow}>{P.hubEyebrow}</div>
+        <div style={H.hairline} />
+      </header>
+      <div style={H.intro}><span style={{color:HC.terra,fontSize:20,lineHeight:1}}>—</span><span style={{fontStyle:"italic",fontSize:19}}>{P.choose(name)}</span></div>
+      <div style={H.grid}>
+        {GAMES.map((g)=>{ const E=g.emblem; const L=g[lang]||g.fr; return (
+          <button key={g.id} onClick={()=>setActive(g.id)} style={H.card} className="card">
+            <div style={{marginBottom:8}}><E/></div>
+            <div style={H.cardName}>{L.name}</div>
+            <div style={H.cardDesc}>{L.desc}</div>
+            <div style={H.cardTag}>{L.tag}</div>
+          </button>); })}
+      </div>
+      <footer style={H.foot}><span>{P.footer}</span><button onClick={logout} style={H.logout}>{P.logout}</button></footer>
+    </div></div>
+  );
+}
+
+const H = {
+  portal: { minHeight:"100vh", background:`radial-gradient(120% 120% at 50% 0%, #F6F0E4 0%, ${HC.bg} 60%)`, display:"flex", alignItems:"center", justifyContent:"center", padding:"24px 16px" },
+  portalCard: { width:"min(92vw, 380px)", textAlign:"center", background:HC.panel, border:`1px solid ${HC.hair}`, borderRadius:6, padding:"34px 26px 28px", boxShadow:"0 30px 56px -34px rgba(32,30,25,0.5)" },
+  brandBig: { fontFamily:"ui-sans-serif, system-ui, sans-serif", fontSize:16, fontWeight:600, letterSpacing:"0.5em", paddingLeft:"0.5em" },
+  portalTitle: { fontSize:32, fontStyle:"italic", marginTop:10, lineHeight:1 },
+  portalLine: { fontStyle:"italic", fontSize:17, color:HC.muted, margin:"6px 0 18px" },
+  input: { width:"100%", padding:"13px 14px", border:`1px solid ${HC.hair}`, borderRadius:3, background:HC.paper, fontSize:18, color:HC.ink, fontFamily:"'Cormorant Garamond',serif", textAlign:"center", boxSizing:"border-box" },
+  enterBtn: { width:"100%", marginTop:12, padding:"13px", border:"none", borderRadius:3, background:HC.terra, color:"#FBF7EF", fontFamily:"ui-sans-serif, system-ui, sans-serif", fontSize:11, letterSpacing:"0.18em", textTransform:"uppercase", cursor:"pointer" },
+  lang: { display:"inline-flex", gap:2, border:`1px solid ${HC.hair}`, borderRadius:999, padding:2, background:"rgba(251,246,234,0.7)" },
+  langBtn: { fontFamily:"ui-sans-serif, system-ui, sans-serif", fontSize:10, letterSpacing:"0.12em", padding:"5px 11px", border:"none", borderRadius:999, background:"transparent", color:HC.muted, cursor:"pointer" },
+  langOn: { background:HC.ink, color:HC.bg },
+  page: { position:"relative", minHeight:"100vh", background:`radial-gradient(120% 120% at 50% 0%, #F6F0E4 0%, ${HC.bg} 60%)`, display:"flex", alignItems:"flex-start", justifyContent:"center", padding:"44px 16px" },
+  shell: { width:"min(92vw, 720px)" },
+  head: { textAlign:"center", marginBottom:16 },
+  brand: { fontFamily:"ui-sans-serif, system-ui, sans-serif", fontSize:14, fontWeight:600, letterSpacing:"0.46em", paddingLeft:"0.46em" },
+  title: { fontSize:36, fontStyle:"italic", marginTop:10, lineHeight:1 },
+  eyebrow: { fontFamily:"ui-sans-serif, system-ui, sans-serif", fontSize:10, letterSpacing:"0.3em", color:HC.muted, marginTop:9, paddingLeft:"0.3em" },
+  hairline: { height:1, background:HC.hair, margin:"18px auto 0", width:"100%" },
+  intro: { display:"flex", gap:10, alignItems:"baseline", justifyContent:"center", margin:"16px 0 22px" },
+  grid: { display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(155px, 1fr))", gap:12 },
+  card: { textAlign:"left", cursor:"pointer", border:`1px solid ${HC.hair}`, borderRadius:5, background:HC.panel, padding:"16px 16px 14px", display:"flex", flexDirection:"column", gap:4, color:HC.ink, boxShadow:"0 1px 0 rgba(255,255,255,0.6) inset" },
+  cardName: { fontSize:21, fontWeight:500, lineHeight:1.1 },
+  cardDesc: { fontSize:15.5, color:HC.muted, lineHeight:1.3, minHeight:40 },
+  cardTag: { fontFamily:"ui-sans-serif, system-ui, sans-serif", fontSize:9.5, letterSpacing:"0.14em", textTransform:"uppercase", color:HC.terra, marginTop:4 },
+  foot: { display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, flexWrap:"wrap", marginTop:26, fontStyle:"italic", fontSize:15, color:HC.muted },
+  logout: { fontFamily:"ui-sans-serif, system-ui, sans-serif", fontSize:9.5, letterSpacing:"0.14em", textTransform:"uppercase", padding:"7px 12px", border:`1px solid ${HC.hair}`, borderRadius:999, background:"transparent", color:HC.muted, cursor:"pointer" },
+  back: { position:"fixed", top:14, left:14, zIndex:50, fontFamily:"ui-sans-serif, system-ui, sans-serif", fontSize:11, letterSpacing:"0.12em", textTransform:"uppercase", padding:"8px 14px", border:`1px solid ${HC.hair}`, borderRadius:999, background:"rgba(251,246,234,0.92)", backdropFilter:"blur(6px)", color:HC.ink, cursor:"pointer", boxShadow:"0 6px 18px -10px rgba(32,30,25,0.5)" },
+};
+ReactDOM.createRoot(document.getElementById("root")).render(<BeauJeux/>);
+</script>
+</body>
+</html>
