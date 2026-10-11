@@ -98,7 +98,7 @@ export async function syncQuizHist(local) {
   const merged = { ...local };
   const remote = new Set();
   for (const r of data) { remote.add(r.week_key); merged[r.week_key] = { pick: r.pick, idx: r.idx }; }
-  const missing = Object.entries(local).filter(([wk]) => !remote.has(wk) && /^\d{4}-W\d{1,2}$/.test(wk));
+  const missing = Object.entries(local).filter(([wk]) => !remote.has(wk) && /^\d{4}-W([1-9]|[1-4]\d|5[0-3])$/.test(wk));
   if (missing.length) {
     const { error: e2 } = await supabase.from("quiz_answers")
       .upsert(missing.map(([wk, v]) => ({ user_id: u.id, week_key: wk, idx: v.idx, pick: v.pick })), { onConflict: "user_id,week_key", ignoreDuplicates: true });

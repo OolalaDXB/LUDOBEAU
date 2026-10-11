@@ -29,7 +29,7 @@ create policy "player_profiles: update own row"
 -- ---------- Quiz: one answer per player per ISO week ----------
 create table if not exists public.quiz_answers (
   user_id    uuid not null default auth.uid() references auth.users (id) on delete cascade,
-  week_key   text not null check (week_key ~ '^\d{4}-W\d{1,2}$'),
+  week_key   text not null check (week_key ~ '^\d{4}-W([1-9]|[1-4]\d|5[0-3])$'),
   idx        smallint not null check (idx >= 0),
   pick       smallint not null check (pick between 0 and 2),
   created_at timestamptz not null default now(),
@@ -301,3 +301,9 @@ revoke all on function public.wager_wall(int) from public;
 grant execute on function public.quiz_week_stats(text) to anon, authenticated;
 grant execute on function public.quiz_leaderboard(int) to anon, authenticated;
 grant execute on function public.wager_wall(int) to anon, authenticated;
+
+-- Trigger functions are not meant to be called through the API.
+revoke all on function public.wagers_freeze_seal() from public, anon, authenticated;
+revoke all on function public.wager_reveals_verify() from public, anon, authenticated;
+revoke all on function public.wager_reveals_mark() from public, anon, authenticated;
+revoke all on function public.wager_challenges_verify() from public, anon, authenticated;
