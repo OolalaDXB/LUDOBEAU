@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import Celebration from "./beau-celebration.jsx";
+import { tierOf } from "./souffleur-ai.js";
 
 /* ============================================================
    BEAU · Puissance 4 / Connect Four
@@ -230,7 +231,7 @@ export default function BeauPuissance4({ lang = "fr" }) {
   return (
     <div style={S.page}>
       <style>{CSS}</style>
-      <Celebration open={!!cele} lang={lang} game="connect-four" variant={cele && cele.defeat ? "defeat" : "win"} winner={cele && cele.winner} accent={cele && cele.accent} message={line} onReplay={() => { setCele(null); newGame(true); }} onClose={() => setCele(null)} />
+      <Celebration open={!!cele} lang={lang} tier={mode === "solo" ? tierOf(level) : null} game="connect-four" variant={cele && cele.defeat ? "defeat" : "win"} winner={cele && cele.winner} accent={cele && cele.accent} message={line} onReplay={() => { setCele(null); newGame(true); }} onClose={() => setCele(null)} />
       <div style={S.shell}>
         <header style={S.head}>
           <div style={S.brand}>BEAU</div>

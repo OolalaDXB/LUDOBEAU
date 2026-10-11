@@ -1,12 +1,18 @@
 /* ============================================================
    BEAU · Le Souffleur, voix générée par Mistral AI
    Supabase Edge Function : POST /functions/v1/souffleur
-   Corps : { kind, lang, game?, context? }  →  { line }
+   Corps : { kind, lang, tier?, game?, context? }  →  { line, model }
    kind : quiz | victory | defeat | comment | wager
+   tier : gentle | steady | sharp, selon la difficulté choisie en jeu
+          (Doux → gentle, Posé → steady, Vif/Malin → sharp). Sans tier,
+          jeux sans niveau (quiz, pari, Tawla, Escales) : modèle par défaut.
 
    Secrets (Dashboard > Edge Functions > Secrets) :
    - MISTRAL_API_KEY   obligatoire pour activer la voix
-   - MISTRAL_MODEL     facultatif, défaut "mistral-small-latest"
+   - MISTRAL_MODEL_GENTLE   facultatif, défaut "mistral-small-latest"
+   - MISTRAL_MODEL_STEADY   facultatif, défaut "mistral-medium-latest"
+   - MISTRAL_MODEL_SHARP    facultatif, défaut "mistral-large-latest"
+   - MISTRAL_MODEL          facultatif, modèle sans niveau, défaut "mistral-medium-latest"
    - ALLOWED_ORIGINS   facultatif, origines autorisées séparées par des virgules
    Sans clé, la fonction répond 503 et les jeux gardent leurs répliques écrites.
 
@@ -19,7 +25,14 @@ const MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions";
 const KINDS = ["quiz", "victory", "defeat", "comment", "wager"];
 const MAX_CONTEXT = 1500;      // caractères de contexte acceptés
 const MAX_TOKENS = 120;        // une ou deux phrases, pas plus
-const TIMEOUT_MS = 8000;
+
+/* Modèle et délai par niveau : plus le niveau est relevé, plus le Souffleur est fin, et plus il prend son temps. */
+const TIERS = {
+  gentle: { secret: "MISTRAL_MODEL_GENTLE", model: "mistral-small-latest", timeoutMs: 8000 },
+  steady: { secret: "MISTRAL_MODEL_STEADY", model: "mistral-medium-latest", timeoutMs: 10000 },
+  sharp: { secret: "MISTRAL_MODEL_SHARP", model: "mistral-large-latest", timeoutMs: 12000 },
+};
+const DEFAULT_TIER = { secret: "MISTRAL_MODEL", model: "mistral-medium-latest", timeoutMs: 10000 };
 
 /* Garde-fou best effort : quelques appels par minute et par IP, par instance. */
 const RATE = { windowMs: 60_000, max: 20 };
@@ -130,16 +143,18 @@ export async function handle(req) {
   const lang = body.lang === "en" ? "en" : "fr";
   const game = String(body.game || "").slice(0, 40);
   const context = JSON.stringify(body.context ?? {}).slice(0, MAX_CONTEXT);
+  const tier = TIERS[body.tier] || DEFAULT_TIER;
+  const model = env(tier.secret) || tier.model;
 
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => ctrl.abort(), tier.timeoutMs);
   try {
     const r = await fetch(MISTRAL_URL, {
       method: "POST",
       signal: ctrl.signal,
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
       body: JSON.stringify({
-        model: env("MISTRAL_MODEL") || "mistral-small-latest",
+        model,
         temperature: 0.7,
         max_tokens: MAX_TOKENS,
         messages: [
@@ -152,7 +167,7 @@ export async function handle(req) {
     const data = await r.json();
     const line = clean(data?.choices?.[0]?.message?.content);
     if (!line) return reply(502, { error: "empty" });
-    return reply(200, { line });
+    return reply(200, { line, model });
   } catch (e) {
     return reply(e && e.name === "AbortError" ? 504 : 502, { error: "upstream" });
   } finally {

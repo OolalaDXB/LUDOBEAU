@@ -11,13 +11,17 @@ import { supabaseUrl, supabaseKey } from "../lib/supabase.js";
 
 const ENDPOINT = import.meta.env.VITE_SOUFFLEUR_ENDPOINT || (supabaseUrl ? `${supabaseUrl}/functions/v1/souffleur` : "");
 const ENABLED = import.meta.env.VITE_SOUFFLEUR_AI !== "off";
-const TIMEOUT_MS = 6000;
+const TIMEOUT_MS = 13000;         /* la réplique écrite est déjà affichée : on peut attendre le grand modèle */
+
+/* Niveau de jeu → finesse du Souffleur (modèle Mistral choisi côté serveur). */
+const TIERS = { doux: "gentle", pose: "steady", vif: "sharp", malin: "sharp" };
+export const tierOf = (level) => TIERS[level] || null;
 
 let offline = !ENABLED || !ENDPOINT;            /* 503/404 : on cesse d'appeler pour la session */
 const cache = new Map();           /* même demande, même réplique */
 
 /**
- * @param {{ kind: "quiz"|"victory"|"defeat"|"comment"|"wager", lang: "fr"|"en", game?: string, context?: object }} req
+ * @param {{ kind: "quiz"|"victory"|"defeat"|"comment"|"wager", lang: "fr"|"en", tier?: "gentle"|"steady"|"sharp"|null, game?: string, context?: object }} req
  * @returns {Promise<string|null>}
  */
 export async function askSouffleur(req) {

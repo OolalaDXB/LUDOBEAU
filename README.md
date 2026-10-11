@@ -42,10 +42,21 @@ Ce que ça active :
 
 La voix générée passe par la Supabase Edge Function `souffleur` du projet LudoBeau (`supabase/functions/souffleur/index.ts`, déployée, `verify_jwt = false` car la passerelle ne vérifie pas les clés `sb_publishable_` : la fonction contrôle elle-même l'en-tête `apikey`). La clé Mistral reste un secret Supabase.
 
-Pour l'activer : Dashboard Supabase > Edge Functions > Secrets, ajouter `MISTRAL_API_KEY`. Facultatif : `MISTRAL_MODEL` (défaut `mistral-small-latest`), `ALLOWED_ORIGINS` (ex. `https://ludobeau.vercel.app`). Pas de redéploiement nécessaire.
+Pour l'activer : Dashboard Supabase > Edge Functions > Secrets, ajouter `MISTRAL_API_KEY`. Pas de redéploiement nécessaire.
 
-Corps : `{ kind, lang, game?, context? }`, réponse `{ line }`. Types : `quiz` (réaction au choix du dilemme), `victory`, `defeat` (pique gentille), `comment` (moment de partie), `wager` (lisibilité d'une prédiction). Le persona (quiet luxury, vouvoiement, pas de conseil financier personnalisé, mises symboliques) est dans le prompt système.
+Le modèle suit la difficulté choisie par le joueur (Échecs, Puissance 4 contre le Souffleur, Sudoku) :
 
-Côté client, `src/games/souffleur-ai.js` expose `askSouffleur(req)` et `useSouffleurLine(req, repli)` : la réplique écrite s'affiche tout de suite et la voix générée la remplace si elle arrive (6 s max). Sans clé, la fonction répond 503 et la salle garde ses répliques écrites. Déjà branché : quiz (après la réponse) et pop-ups de victoire et de défaite. `VITE_SOUFFLEUR_AI=off` coupe les appels.
+| Niveau | Secret (facultatif) | Défaut |
+|---|---|---|
+| Doux | `MISTRAL_MODEL_GENTLE` | `mistral-small-latest` (délai 8 s) |
+| Posé | `MISTRAL_MODEL_STEADY` | `mistral-medium-latest` (10 s) |
+| Vif / Malin | `MISTRAL_MODEL_SHARP` | `mistral-large-latest` (12 s) |
+| Sans niveau (quiz, pari, Tawla, Escales, parties à deux) | `MISTRAL_MODEL` | `mistral-medium-latest` (10 s) |
+
+Autre secret facultatif : `ALLOWED_ORIGINS` (ex. `https://ludobeau.vercel.app`). La réponse indique le modèle utilisé (`{ line, model }`).
+
+Corps : `{ kind, lang, tier?, game?, context? }`, réponse `{ line, model }`. Types : `quiz` (réaction au choix du dilemme), `victory`, `defeat` (pique gentille), `comment` (moment de partie), `wager` (lisibilité d'une prédiction). Le persona (quiet luxury, vouvoiement, pas de conseil financier personnalisé, mises symboliques) est dans le prompt système.
+
+Côté client, `src/games/souffleur-ai.js` expose `askSouffleur(req)` et `useSouffleurLine(req, repli)` : la réplique écrite s'affiche tout de suite et la voix générée la remplace si elle arrive (13 s max). Sans clé, la fonction répond 503 et la salle garde ses répliques écrites. Déjà branché : quiz (après la réponse) et pop-ups de victoire et de défaite. `VITE_SOUFFLEUR_AI=off` coupe les appels.
 
 Mises symboliques uniquement : BEAU n'est pas une salle de paris.

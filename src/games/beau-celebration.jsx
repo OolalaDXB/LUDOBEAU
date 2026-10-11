@@ -7,7 +7,8 @@ import { useSouffleurLine } from "./souffleur-ai.js";
    variant="win"    : sceau terracotta, confettis de papier.
    variant="defeat" : sceau pétrole, pas de confettis, une pique
                       gentille du Souffleur (liste écrite, ou Mistral).
-   <Celebration open lang variant game message winner accent onReplay onClose />
+   <Celebration open lang variant game tier message winner accent onReplay onClose />
+   tier (gentle | steady | sharp) choisit le modèle Mistral selon la difficulté.
    ============================================================ */
 
 const C = {
@@ -108,7 +109,7 @@ function Seal({ accent, defeat }) {
   );
 }
 
-export default function Celebration({ open, lang = "fr", variant = "win", game, message, winner, accent, title, onReplay, onClose, replayLabel }) {
+export default function Celebration({ open, lang = "fr", variant = "win", game, tier = null, message, winner, accent, title, onReplay, onClose, replayLabel }) {
   const t = STR[lang] || STR.fr;
   const defeat = variant === "defeat" || variant === "wagerLost";
   const btnRef = useRef(null);
@@ -123,7 +124,7 @@ export default function Celebration({ open, lang = "fr", variant = "win", game, 
   const openedAt = useMemo(() => (open ? Date.now() : 0), [open]);
   /* voix Mistral si disponible : remplace la réplique écrite à son arrivée */
   const spoken = useSouffleurLine(
-    open ? { kind: defeat ? "defeat" : "victory", lang, game, context: { winner, detail: message, at: openedAt } } : null,
+    open ? { kind: defeat ? "defeat" : "victory", lang, tier, game, context: { winner, detail: message, at: openedAt } } : null,
     written,
   );
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import Celebration from "./beau-celebration.jsx";
+import { tierOf } from "./souffleur-ai.js";
 
 /* ============================================================
    BEAU · Sudoku
@@ -238,7 +239,7 @@ export default function BeauSudoku({ lang = "fr" }) {
   return (
     <div style={S.page}>
       <style>{CSS}</style>
-      <Celebration open={cele} lang={lang} game="sudoku" message={t.solved} onReplay={() => { setCele(false); newGame(level); }} onClose={() => setCele(false)} />
+      <Celebration open={cele} lang={lang} tier={tierOf(level)} game="sudoku" message={t.solved} onReplay={() => { setCele(false); newGame(level); }} onClose={() => setCele(false)} />
       <div style={S.shell}>
         <header style={S.head}>
           <div style={S.brand}>BEAU</div>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import Celebration from "./beau-celebration.jsx";
+import { tierOf } from "./souffleur-ai.js";
 
 /* ============================================================
    BEAU · LE SOUFFLEUR — Échiquier quiet-luxury
@@ -543,7 +544,7 @@ export default function BeauEchiquier({ lang = "fr" }) {
   return (
     <div style={S.page}>
       <style>{CSS}</style>
-      <Celebration open={!!cele} lang={lang} game="chess" variant={cele && cele.defeat ? "defeat" : "win"} winner={cele && cele.winner} message={line} onReplay={() => { setCele(null); newGame(); }} onClose={() => setCele(null)} />
+      <Celebration open={!!cele} lang={lang} tier={mode === "solo" ? tierOf(level) : null} game="chess" variant={cele && cele.defeat ? "defeat" : "win"} winner={cele && cele.winner} message={line} onReplay={() => { setCele(null); newGame(); }} onClose={() => setCele(null)} />
       <div style={S.shell}>
         <header style={S.head}>
           <div style={S.brand}>BEAU</div>
